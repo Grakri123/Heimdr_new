@@ -1,4 +1,4 @@
-// File: C:\Heimdr\Heimdr-app\src\app\dashboard\page.tsx
+// File: C:\Heimdr\Heimdr-app\src\app\dashboard\page.js
 import * as entry from '../../../../src/app/dashboard/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
