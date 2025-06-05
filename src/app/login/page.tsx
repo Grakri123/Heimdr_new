@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
 
 type AuthMode = 'login' | 'register'
 type Status = 'idle' | 'loading' | 'success' | 'error'
@@ -22,6 +22,7 @@ export default function AuthPage() {
     password: ''
   })
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
     const checkUser = async () => {

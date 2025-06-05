@@ -1,6 +1,10 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import { ReactNode } from 'react'
+import { Inter } from 'next/font/google'
+import { Toaster } from '@/components/ui/toaster'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'HEIMDR - Din digitale vokter',
@@ -14,7 +18,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="no" className="h-full">
-      <body className="h-full">{children}</body>
+      <body className={inter.className}>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 } 

@@ -1,20 +1,19 @@
 'use client'
 
-import { createBrowserClient } from '@supabase/ssr'
 import { useEffect, useState } from 'react'
-import { LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/use-toast'
 
 export function DashboardActions() {
   const router = useRouter()
+  const { toast } = useToast()
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [userInfo, setUserInfo] = useState<{ fullName: string; email: string } | null>(null)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     checkGoogleConnection()
@@ -23,14 +22,42 @@ export function DashboardActions() {
   const checkGoogleConnection = async () => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser()
-      if (error) throw error
+      if (error) {
+        console.error('Auth error:', error)
+        toast({
+          title: 'Autentiseringsfeil',
+          description: 'Kunne ikke hente brukerinformasjon. Vennligst logg inn på nytt.',
+          variant: 'destructive'
+        })
+        router.push('/login')
+        return
+      }
       
       if (!user) {
         router.push('/login')
         return
       }
 
-      const isConnected = user?.identities?.some(i => i.provider === 'google')
+      // Check if we have tokens stored
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('gmail_tokens')
+        .select('access_token')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (tokenError) {
+        console.error('Token error:', tokenError)
+        toast({
+          title: 'Feil ved sjekk av Gmail-tilkobling',
+          description: 'Kunne ikke verifisere Gmail-tilkoblingen. Prøv å koble til på nytt.',
+          variant: 'destructive'
+        })
+        setIsGoogleConnected(false)
+        setUserInfo(null)
+        return
+      }
+
+      const isConnected = !!tokenData
       setIsGoogleConnected(isConnected)
 
       if (isConnected && user) {
@@ -43,6 +70,11 @@ export function DashboardActions() {
       }
     } catch (error) {
       console.error('Error checking Google connection:', error)
+      toast({
+        title: 'Uventet feil',
+        description: 'Det oppstod en feil ved sjekk av Gmail-tilkobling.',
+        variant: 'destructive'
+      })
       setUserInfo(null)
     } finally {
       setIsLoading(false)
@@ -51,32 +83,81 @@ export function DashboardActions() {
 
   const handleGmailConnect = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      setIsConnecting(true)
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/api/auth/callback`,
+          scopes: 'https://www.googleapis.com/auth/gmail.readonly',
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent'
+          }
         }
       })
-      if (error) throw error
+      
+      if (error) {
+        console.error('OAuth error:', error)
+        toast({
+          title: 'Tilkoblingsfeil',
+          description: 'Kunne ikke koble til Gmail. Prøv igjen senere.',
+          variant: 'destructive'
+        })
+      }
     } catch (error) {
       console.error('Error connecting to Gmail:', error)
+      toast({
+        title: 'Uventet feil',
+        description: 'Det oppstod en feil ved tilkobling til Gmail.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsConnecting(false)
     }
   }
 
   const handleGmailDisconnect = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      // First remove the tokens
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+
+      if (user) {
+        const { error: deleteError } = await supabase
+          .from('gmail_tokens')
+          .delete()
+          .eq('user_id', user.id)
+        
+        if (deleteError) throw deleteError
+      }
+
+      // Then sign out
+      const { error: signOutError } = await supabase.auth.signOut()
+      if (signOutError) throw signOutError
+      
+      toast({
+        title: 'Logget ut',
+        description: 'Du har blitt koblet fra Gmail.',
+      })
+      
       router.push('/login')
     } catch (error) {
       console.error('Error disconnecting from Gmail:', error)
+      toast({
+        title: 'Feil ved frakobling',
+        description: 'Kunne ikke koble fra Gmail. Prøv igjen senere.',
+        variant: 'destructive'
+      })
     }
   }
 
   if (isLoading) {
     return (
       <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-6 mb-8">
-        <p className="text-steel-blue text-center">Laster...</p>
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-bronze"></div>
+          <p className="ml-3 text-steel-blue">Laster...</p>
+        </div>
       </div>
     )
   }
@@ -102,9 +183,17 @@ export function DashboardActions() {
         {!isGoogleConnected ? (
           <button
             onClick={handleGmailConnect}
-            className="w-full bg-bronze hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            disabled={isConnecting}
+            className="w-full bg-bronze hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Koble til Gmail
+            {isConnecting ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <span className="ml-3">Kobler til...</span>
+              </div>
+            ) : (
+              'Koble til Gmail'
+            )}
           </button>
         ) : (
           <button
