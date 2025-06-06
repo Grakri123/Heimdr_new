@@ -13,6 +13,7 @@ export function DashboardActions() {
   const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
   const [userInfo, setUserInfo] = useState<{ fullName: string; email: string } | null>(null)
+  const [outlookEmail, setOutlookEmail] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -70,7 +71,7 @@ export function DashboardActions() {
       // Check Outlook tokens
       const { data: outlookTokenData, error: outlookTokenError } = await supabase
         .from('outlook_tokens')
-        .select('access_token')
+        .select('access_token, email')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -82,8 +83,10 @@ export function DashboardActions() {
           variant: 'destructive'
         })
         setIsOutlookConnected(false)
+        setOutlookEmail(null)
       } else {
         setIsOutlookConnected(!!outlookTokenData)
+        setOutlookEmail(outlookTokenData?.email || null)
       }
     } catch (error) {
       console.error('Error checking connections:', error)
@@ -93,6 +96,7 @@ export function DashboardActions() {
         variant: 'destructive'
       })
       setUserInfo(null)
+      setOutlookEmail(null)
     } finally {
       setIsLoading(false)
     }
@@ -264,6 +268,13 @@ export function DashboardActions() {
         <p className="text-steel-blue mb-6">
           Status: {isOutlookConnected ? 'Tilkoblet' : 'Ikke tilkoblet'}
         </p>
+
+        {isOutlookConnected && outlookEmail && (
+          <div className="mb-6 p-4 bg-ivory rounded-lg border border-steel-blue border-opacity-20">
+            <p className="text-charcoal text-sm mb-2">Innlogget som:</p>
+            <p className="text-steel-blue text-sm">{outlookEmail}</p>
+          </div>
+        )}
 
         {!isOutlookConnected ? (
           <button

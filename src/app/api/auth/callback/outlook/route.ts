@@ -26,6 +26,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to get token', details: tokenData }, { status: 500 })
   }
 
+  // Fetch user's email from Microsoft Graph
+  const graphRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+    headers: {
+      'Authorization': `Bearer ${tokenData.access_token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  const graphData = await graphRes.json()
+  const userEmail = graphData.mail || graphData.userPrincipalName
+
+  if (!userEmail) {
+    console.error('Failed to get user email:', graphData)
+    return NextResponse.json({ error: 'Failed to get user email' }, { status: 500 })
+  }
+
   // Store in Supabase
   const supabase = createApiClient()
   const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -38,7 +54,8 @@ export async function GET(req: NextRequest) {
     user_id: session.user.id,
     access_token: tokenData.access_token,
     refresh_token: tokenData.refresh_token,
-    expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+    expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+    email: userEmail
   })
 
   if (upsertError) {

@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     response_type: 'code',
     redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/outlook`,
     response_mode: 'query',
-    scope: 'offline_access Mail.Read',
+    scope: 'offline_access Mail.Read User.Read',
     prompt: 'consent'
   })
 
