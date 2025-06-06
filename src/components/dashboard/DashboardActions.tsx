@@ -9,6 +9,7 @@ export function DashboardActions() {
   const router = useRouter()
   const { toast } = useToast()
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
+  const [isOutlookConnected, setIsOutlookConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
   const [userInfo, setUserInfo] = useState<{ fullName: string; email: string } | null>(null)
@@ -16,10 +17,10 @@ export function DashboardActions() {
   const supabase = createClient()
 
   useEffect(() => {
-    checkGoogleConnection()
+    checkConnections()
   }, [])
 
-  const checkGoogleConnection = async () => {
+  const checkConnections = async () => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser()
       if (error) {
@@ -38,15 +39,15 @@ export function DashboardActions() {
         return
       }
 
-      // Check if we have tokens stored
-      const { data: tokenData, error: tokenError } = await supabase
+      // Check Gmail tokens
+      const { data: gmailTokenData, error: gmailTokenError } = await supabase
         .from('gmail_tokens')
         .select('access_token')
         .eq('user_id', user.id)
         .maybeSingle()
 
-      if (tokenError) {
-        console.error('Token error:', tokenError)
+      if (gmailTokenError) {
+        console.error('Gmail token error:', gmailTokenError)
         toast({
           title: 'Feil ved sjekk av Gmail-tilkobling',
           description: 'Kunne ikke verifisere Gmail-tilkoblingen. Prøv å koble til på nytt.',
@@ -54,25 +55,41 @@ export function DashboardActions() {
         })
         setIsGoogleConnected(false)
         setUserInfo(null)
-        return
+      } else {
+        const isGmailConnected = !!gmailTokenData
+        setIsGoogleConnected(isGmailConnected)
+
+        if (isGmailConnected && user) {
+          setUserInfo({
+            fullName: user.user_metadata.full_name || 'Ukjent navn',
+            email: user.email || 'Ingen e-post tilgjengelig'
+          })
+        }
       }
 
-      const isConnected = !!tokenData
-      setIsGoogleConnected(isConnected)
+      // Check Outlook tokens
+      const { data: outlookTokenData, error: outlookTokenError } = await supabase
+        .from('outlook_tokens')
+        .select('access_token')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-      if (isConnected && user) {
-        setUserInfo({
-          fullName: user.user_metadata.full_name || 'Ukjent navn',
-          email: user.email || 'Ingen e-post tilgjengelig'
+      if (outlookTokenError) {
+        console.error('Outlook token error:', outlookTokenError)
+        toast({
+          title: 'Feil ved sjekk av Outlook-tilkobling',
+          description: 'Kunne ikke verifisere Outlook-tilkoblingen. Prøv å koble til på nytt.',
+          variant: 'destructive'
         })
+        setIsOutlookConnected(false)
       } else {
-        setUserInfo(null)
+        setIsOutlookConnected(!!outlookTokenData)
       }
     } catch (error) {
-      console.error('Error checking Google connection:', error)
+      console.error('Error checking connections:', error)
       toast({
         title: 'Uventet feil',
-        description: 'Det oppstod en feil ved sjekk av Gmail-tilkobling.',
+        description: 'Det oppstod en feil ved sjekk av tilkoblinger.',
         variant: 'destructive'
       })
       setUserInfo(null)
@@ -118,7 +135,6 @@ export function DashboardActions() {
 
   const handleGmailDisconnect = async () => {
     try {
-      // First remove the tokens
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError) throw userError
 
@@ -151,9 +167,43 @@ export function DashboardActions() {
     }
   }
 
+  const handleOutlookConnect = () => {
+    window.location.href = '/api/auth/outlook/login'
+  }
+
+  const handleOutlookDisconnect = async () => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+
+      if (user) {
+        const { error: deleteError } = await supabase
+          .from('outlook_tokens')
+          .delete()
+          .eq('user_id', user.id)
+        
+        if (deleteError) throw deleteError
+      }
+      
+      toast({
+        title: 'Frakoblet',
+        description: 'Du har blitt koblet fra Outlook.',
+      })
+      
+      setIsOutlookConnected(false)
+    } catch (error) {
+      console.error('Error disconnecting from Outlook:', error)
+      toast({
+        title: 'Feil ved frakobling',
+        description: 'Kunne ikke koble fra Outlook. Prøv igjen senere.',
+        variant: 'destructive'
+      })
+    }
+  }
+
   if (isLoading) {
     return (
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-6 mb-8">
+      <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-6 mb-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-bronze"></div>
           <p className="ml-3 text-steel-blue">Laster...</p>
@@ -163,8 +213,9 @@ export function DashboardActions() {
   }
 
   return (
-    <>
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+      {/* Gmail Box */}
+      <div className="w-full bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-semibold text-charcoal mb-4">
           GMAIL
         </h2>
@@ -205,14 +256,31 @@ export function DashboardActions() {
         )}
       </div>
 
-      {isGoogleConnected && (
-        <button
-          onClick={handleGmailDisconnect}
-          className="text-steel-blue hover:text-charcoal font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          Logg ut
-        </button>
-      )}
-    </>
+      {/* Outlook Box */}
+      <div className="w-full bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-semibold text-charcoal mb-4">
+          OUTLOOK
+        </h2>
+        <p className="text-steel-blue mb-6">
+          Status: {isOutlookConnected ? 'Tilkoblet' : 'Ikke tilkoblet'}
+        </p>
+
+        {!isOutlookConnected ? (
+          <button
+            onClick={handleOutlookConnect}
+            className="w-full bg-bronze hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            Koble til Outlook
+          </button>
+        ) : (
+          <button
+            onClick={handleOutlookDisconnect}
+            className="w-full bg-muted-red hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            Koble fra Outlook
+          </button>
+        )}
+      </div>
+    </div>
   )
 } 

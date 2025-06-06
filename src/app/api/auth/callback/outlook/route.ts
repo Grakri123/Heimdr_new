@@ -1,0 +1,52 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createApiClient } from '@/lib/supabase/server'
+
+export async function GET(req: NextRequest) {
+  const code = req.nextUrl.searchParams.get('code')
+  if (!code) {
+    return NextResponse.json({ error: 'Missing code param' }, { status: 400 })
+  }
+
+  const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.OUTLOOK_CLIENT_ID!,
+      client_secret: process.env.OUTLOOK_CLIENT_SECRET!,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/outlook`,
+    }),
+  })
+
+  const tokenData = await tokenRes.json()
+
+  if (!tokenData.access_token) {
+    console.error('Token exchange failed:', tokenData)
+    return NextResponse.json({ error: 'Failed to get token', details: tokenData }, { status: 500 })
+  }
+
+  // Store in Supabase
+  const supabase = createApiClient()
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+  if (sessionError || !session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { error: upsertError } = await supabase.from('outlook_tokens').upsert({
+    user_id: session.user.id,
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+  })
+
+  if (upsertError) {
+    console.error('Error storing Outlook tokens:', upsertError)
+    return NextResponse.json({ error: 'Failed to store tokens' }, { status: 500 })
+  }
+
+  // Use absolute URL for redirect
+  const dashboardUrl = new URL('/dashboard', process.env.NEXT_PUBLIC_APP_URL).toString()
+  return NextResponse.redirect(dashboardUrl)
+} 
