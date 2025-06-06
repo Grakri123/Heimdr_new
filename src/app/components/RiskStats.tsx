@@ -37,27 +37,58 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
   const runAnalysis = async () => {
     try {
       setIsAnalyzing(true)
-      const response = await fetch('/api/analyze-emails', {
-        method: 'POST',
-      })
       
-      if (!response.ok) {
-        throw new Error('Failed to analyze emails')
+      // First fetch new emails from both sources
+      const toastId = toast({
+        title: 'Analyserer e-poster...',
+        description: 'Vi henter inn nye e-poster fra Gmail og Outlook.',
+        variant: 'default'
+      })
+
+      // Fetch emails in parallel
+      const [gmailRes, outlookRes] = await Promise.all([
+        fetch('/api/gmail/fetch-emails'),
+        fetch('/api/outlook/fetch-emails')
+      ])
+
+      const gmailJson = await gmailRes.json()
+      const outlookJson = await outlookRes.json()
+
+      // Calculate total new emails
+      const totalNew = (gmailJson?.newEmails || 0) + (outlookJson?.newEmails || 0)
+
+      if (totalNew > 0) {
+        // Now run the analysis on the new emails
+        const response = await fetch('/api/analyze-emails', {
+          method: 'POST',
+        })
+        
+        if (!response.ok) {
+          throw new Error('Failed to analyze emails')
+        }
+        
+        const data = await response.json()
+        toast({
+          title: 'Analyse fullført',
+          description: `${totalNew} nye e-poster hentet og analysert.`,
+          variant: 'default'
+        })
+      } else {
+        toast({
+          title: 'Ingen nye e-poster',
+          description: 'Ingen nye e-poster å analysere.',
+          variant: 'default'
+        })
       }
-      
-      const data = await response.json()
-      toast({
-        title: 'AI-analyse fullført',
-        description: `${data.newAnalyzedEmails} nye e-poster ble analysert.`,
-      })
       
       // Refresh stats after analysis
       await fetchEmails()
       onRefresh()
     } catch (error) {
+      console.error('Error during analysis:', error)
       toast({
         title: 'Feil under analyse',
-        description: 'Kunne ikke fullføre AI-analysen av e-poster.',
+        description: 'Det oppstod en feil under analyse av e-poster.',
         variant: 'destructive',
       })
     } finally {
@@ -99,7 +130,7 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-red-100 text-red-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
           <p className="text-sm font-medium uppercase tracking-wide">Høy risiko</p>
           <p className="text-4xl font-bold mt-2">{highCount}</p>

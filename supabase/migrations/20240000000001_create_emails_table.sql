@@ -8,8 +8,11 @@ create table if not exists public.emails (
   body text,
   ai_risk_level text check (ai_risk_level in ('Lav', 'Medium', 'Høy')),
   ai_reason text,
+  source text not null default 'gmail',
+  message_id text not null,
   analyzed_at timestamp with time zone default timezone('utc'::text, now()),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(source, message_id)
 );
 
 -- Enable RLS

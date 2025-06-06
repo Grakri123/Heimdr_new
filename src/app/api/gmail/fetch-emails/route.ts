@@ -17,8 +17,11 @@ export async function GET() {
     const { data: { session } } = await supabase.auth.getSession()
 
     if (!session?.user) {
+      console.log('📬 Gmail: Ingen bruker funnet')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    console.log('📬 Gmail: Bruker ID =', session.user.id)
 
     // Fetch Gmail token from Supabase
     const { data: tokenData, error: tokenError } = await supabase
@@ -28,11 +31,14 @@ export async function GET() {
       .single()
 
     if (tokenError || !tokenData) {
+      console.log('📬 Gmail: Ingen token funnet')
       return NextResponse.json(
         { error: 'Gmail token not found' },
         { status: 404 }
       )
     }
+
+    console.log('📬 Gmail: access_token =', tokenData.access_token.substring(0, 10) + '... (trunkert)')
 
     // Set up OAuth2 client with tokens
     oauth2Client.setCredentials({
@@ -49,13 +55,38 @@ export async function GET() {
       maxResults: 10,
     })
 
+    console.log('📬 Gmail: Status =', response.status)
+    console.log('📬 Gmail: API-respons =', JSON.stringify(response.data, null, 2))
+
     if (!response.data.messages) {
+      console.log('📬 Gmail: Ingen e-poster funnet')
       return NextResponse.json({ emails: [] })
     }
 
-    // Fetch details for each email
-    const emails = await Promise.all(
-      response.data.messages.map(async (message) => {
+    // Get existing email IDs to avoid duplicates
+    const { data: existingEmails, error: existingError } = await supabase
+      .from('emails')
+      .select('message_id')
+      .eq('user_id', session.user.id)
+      .eq('source', 'gmail')
+
+    if (existingError) {
+      console.error('📬 Gmail: Feil ved henting av eksisterende e-poster:', existingError)
+      throw existingError
+    }
+
+    const existingIds = new Set(existingEmails?.map(e => e.message_id) || [])
+    const newEmails = []
+    let skippedCount = 0
+
+    // Process each email
+    for (const message of response.data.messages) {
+      if (existingIds.has(message.id)) {
+        skippedCount++
+        continue
+      }
+
+      try {
         const email = await gmail.users.messages.get({
           userId: 'me',
           id: message.id!,
@@ -68,24 +99,43 @@ export async function GET() {
         const subject = headers?.find((h) => h.name === 'Subject')?.value || ''
         const date = headers?.find((h) => h.name === 'Date')?.value || ''
 
-        return {
+        const emailData = {
           id: message.id,
-          from,
+          user_id: session.user.id,
+          from_address: from,
           subject,
-          date: new Date(date).toLocaleDateString('nb-NO', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
+          date: new Date(date).toISOString(),
+          body: '',
+          source: 'gmail',
+          message_id: message.id,
+          created_at: new Date().toISOString()
         }
-      })
-    )
 
-    return NextResponse.json({ emails })
+        // Store in database
+        const { error: insertError } = await supabase
+          .from('emails')
+          .insert(emailData)
+
+        if (insertError) {
+          console.error('📬 Gmail: Feil ved lagring av e-post:', message.id, insertError)
+          continue
+        }
+
+        console.log('📬 Gmail: Lagret ny e-post:', message.id)
+        newEmails.push(emailData)
+      } catch (error) {
+        console.error('📬 Gmail: Feil ved prosessering av e-post:', message.id, error)
+      }
+    }
+
+    console.log(`📬 Gmail: Fant ${response.data.messages.length} e-poster. ${newEmails.length} nye ble lagret. ${skippedCount} eksisterte fra før.`)
+
+    return NextResponse.json({
+      newEmails: newEmails.length,
+      emails: newEmails
+    })
   } catch (error) {
-    console.error('Error fetching emails:', error)
+    console.error('📬 Gmail: Uventet feil:', error)
     return NextResponse.json(
       { error: 'Failed to fetch emails' },
       { status: 500 }
