@@ -17,11 +17,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch all emails from Supabase, sorted by date DESC
+    // Fetch only analyzed emails from Supabase, sorted by date DESC
     const { data: emails, error: emailsError } = await supabase
       .from('emails')
       .select('*')
       .eq('user_id', session.user.id)
+      .not('analyzed_at', 'is', null)  // Only get analyzed emails
+      .not('ai_risk_level', 'is', null)  // Make sure they have a risk level
       .order('date', { ascending: false })
 
     if (emailsError) {
