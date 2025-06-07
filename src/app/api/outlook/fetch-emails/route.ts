@@ -1,7 +1,42 @@
 import { createApiClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { analyzeNewEmail } from '@/lib/email/analyze'
 
 export const dynamic = 'force-dynamic'
+
+// Helper function to convert HTML to plain text
+function htmlToPlainText(html: string): string {
+  try {
+    // Remove style/script tags and their content
+    let text = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                   .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    
+    // Replace common HTML entities
+    text = text.replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&#x27;/g, "'")
+              .replace(/&mdash;/g, '—')
+              .replace(/&ndash;/g, '–')
+    
+    // Remove all remaining HTML tags
+    text = text.replace(/<[^>]+>/g, '')
+    
+    // Fix whitespace
+    text = text.replace(/\s+/g, ' ')
+              .replace(/^\s+|\s+$/g, '')
+    
+    // Decode any remaining HTML entities
+    text = text.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+    
+    return text
+  } catch (error) {
+    console.error('❌ Feil ved konvertering av HTML til tekst:', error)
+    return 'Kunne ikke konvertere HTML-innhold til tekst'
+  }
+}
 
 export async function GET() {
   try {
@@ -37,13 +72,19 @@ export async function GET() {
 
     console.log('📧 Outlook: access_token =', tokenData.access_token.substring(0, 10) + '... (trunkert)')
 
-    // Fetch emails from Microsoft Graph API
-    const response = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,receivedDateTime,bodyPreview', {
-      headers: {
-        'Authorization': `Bearer ${tokenData.access_token}`,
-        'Content-Type': 'application/json'
+    // Get emails from Outlook
+    const response = await fetch(
+      'https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
+        $select: 'id,subject,bodyPreview,body,from,receivedDateTime',
+        $orderby: 'receivedDateTime desc',
+        $top: '10'  // Changed from 25 to 10 to match Gmail
+      }), {
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Content-Type': 'application/json'
+        }
       }
-    })
+    )
 
     console.log('📧 Outlook: Status =', response.status)
     
@@ -67,7 +108,7 @@ export async function GET() {
     // Get existing email IDs to avoid duplicates
     const { data: existingEmails, error: existingError } = await supabase
       .from('emails')
-      .select('message_id')
+      .select('message_id, analyzed_at')
       .eq('user_id', session.user.id)
       .eq('source', 'outlook')
 
@@ -76,13 +117,18 @@ export async function GET() {
       throw existingError
     }
 
-    const existingIds = new Set(existingEmails?.map(e => e.message_id) || [])
+    // Create a map of existing IDs with their analyzed status
+    const existingEmailMap = new Map(
+      existingEmails?.map(e => [e.message_id, e.analyzed_at !== null]) || []
+    )
     const newEmails = []
     let skippedCount = 0
+    const analysisErrors = []
 
     // Process each email
     for (const message of data.value) {
-      if (existingIds.has(message.id)) {
+      // Skip only if email exists AND has been analyzed
+      if (existingEmailMap.has(message.id) && existingEmailMap.get(message.id)) {
         skippedCount++
         continue
       }
@@ -93,31 +139,68 @@ export async function GET() {
         from_address: message.from.emailAddress.address,
         subject: message.subject,
         date: message.receivedDateTime,
-        body: message.bodyPreview,
+        body: htmlToPlainText(message.body?.content || message.bodyPreview || ''),
         source: 'outlook',
         message_id: message.id,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        analyzed_at: null,  // Explicitly set to null to force reanalysis
+        ai_risk_level: null,  // Reset analysis results
+        ai_reason: null  // Reset analysis results
       }
 
-      // Store in database
-      const { error: insertError } = await supabase
+      // Store in database using upsert
+      const { error: upsertError } = await supabase
         .from('emails')
-        .insert(emailData)
+        .upsert(emailData, {
+          onConflict: 'id',
+          ignoreDuplicates: false
+        })
 
-      if (insertError) {
-        console.error('📧 Outlook: Feil ved lagring av e-post:', message.id, insertError)
+      if (upsertError) {
+        console.error('📧 Outlook: Feil ved lagring av e-post:', message.id, upsertError)
         continue
       }
 
-      console.log('📧 Outlook: Lagret ny e-post:', message.id)
+      console.log('📧 Outlook: Lagret/oppdaterte e-post:', message.id, '(analyzed_at nullstilt)')
       newEmails.push(emailData)
+
+      // Analyze the new email
+      try {
+        console.log(`📊 Forbereder analyse av e-post ${message.id}:`, {
+          hasFrom: !!emailData.from_address,
+          hasSubject: !!emailData.subject,
+          bodyLength: emailData.body?.length || 0
+        })
+        
+        const emailContent = `From: ${emailData.from_address}\nSubject: ${emailData.subject}\n\n${emailData.body}`
+        console.log(`🤖 Starter analyse av e-post ${message.id}...`)
+        await analyzeNewEmail(supabase, message.id, emailContent)
+        console.log(`✅ Analyse fullført for e-post ${message.id}`)
+      } catch (analysisError) {
+        console.error(`❌ Feil ved analyse av e-post ${message.id}:`, analysisError)
+        if (analysisError instanceof Error) {
+          console.error('Detaljert feil:', {
+            name: analysisError.name,
+            message: analysisError.message,
+            stack: analysisError.stack
+          })
+        }
+        analysisErrors.push({
+          id: message.id,
+          error: analysisError instanceof Error ? analysisError.message : 'Ukjent feil ved analyse'
+        })
+      }
     }
 
     console.log(`📧 Outlook: Fant ${data.value.length} e-poster. ${newEmails.length} nye ble lagret. ${skippedCount} eksisterte fra før.`)
+    if (analysisErrors.length > 0) {
+      console.log(`📧 Outlook: ${analysisErrors.length} e-poster kunne ikke analyseres:`, analysisErrors)
+    }
 
     return NextResponse.json({
       newEmails: newEmails.length,
-      emails: newEmails
+      emails: newEmails,
+      analysisErrors: analysisErrors.length > 0 ? analysisErrors : undefined
     })
   } catch (error) {
     console.error('📧 Outlook: Uventet feil:', error)

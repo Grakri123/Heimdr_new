@@ -24,28 +24,33 @@ interface AnalysisResponse {
 
 async function testOpenAIConnection(apiKey: string): Promise<boolean> {
   try {
+    console.log('🔍 Testing OpenAI connection...')
     const openai = new OpenAI({ apiKey })
-    // Try a simple completion to test the connection
     await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: 'Test connection' }],
       max_tokens: 5
     })
+    console.log('✅ OpenAI connection test successful')
     return true
   } catch (error) {
-    console.error('OpenAI connection test failed:', error)
+    console.error('❌ OpenAI connection test failed:', error)
     return false
   }
 }
 
 async function analyzeEmailWithGPT(emailContent: string): Promise<AnalysisResponse> {
   try {
+    console.log('🔍 Starting GPT analysis...')
+    
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
-      console.error('OpenAI API key is not set')
+      console.error('❌ OpenAI API key is not set')
       throw new Error('OpenAI API key is not configured')
     }
-    console.log('OpenAI API key is set (length):', apiKey.length)
+
+    console.log('📧 Email content length:', emailContent.length)
+    console.log('📧 Email content preview:', emailContent.substring(0, 100) + '...')
 
     const openai = new OpenAI({
       apiKey: apiKey,
@@ -81,72 +86,53 @@ async function analyzeEmailWithGPT(emailContent: string): Promise<AnalysisRespon
       'Svar KUN med JSON, ingen annen tekst.'
     ].join('\n')
 
-    console.log('Starting OpenAI analysis...')
-    try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'Du er en ekspert på å analysere e-poster for svindel og skadelig innhold. Vurder risikoen og gi en kort begrunnelse på norsk. Du må være konsistent med risikonivåene og kun bruke: Lav, Medium, eller Høy. Svar kun med JSON.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      })
-      console.log('OpenAI analysis completed successfully')
-
-      const responseContent = completion.choices[0].message.content
-      console.log('OpenAI raw response:', responseContent)
-
-      try {
-        const response = JSON.parse(responseContent.trim()) as AnalysisResponse
-        console.log('Parsed response:', response)
-
-        // Validate and normalize the risk level
-        const normalizedRiskLevel = normalizeRiskLevel(response.riskLevel)
-        console.log('Normalized risk level:', normalizedRiskLevel)
-        
-        return {
-          riskLevel: normalizedRiskLevel,
-          reason: response.reason || 'Ingen begrunnelse tilgjengelig'
+    console.log('🤖 Sending request to OpenAI...')
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'Du er en ekspert på å analysere e-poster for svindel og skadelig innhold. Vurder risikoen og gi en kort begrunnelse på norsk. Du må være konsistent med risikonivåene og kun bruke: Lav, Medium, eller Høy. Svar kun med JSON.'
+        },
+        {
+          role: 'user',
+          content: prompt
         }
-      } catch (parseError) {
-        console.error('Error parsing OpenAI response:', parseError)
-        throw new Error('Could not parse OpenAI response as JSON')
+      ]
+    })
+
+    console.log('✅ Received response from OpenAI')
+    const responseContent = completion.choices[0].message.content
+    console.log('📝 Raw GPT response:', responseContent)
+
+    try {
+      const response = JSON.parse(responseContent.trim()) as AnalysisResponse
+      console.log('✅ Successfully parsed GPT response:', response)
+      
+      return {
+        riskLevel: normalizeRiskLevel(response.riskLevel),
+        reason: response.reason || 'Ingen begrunnelse tilgjengelig'
       }
-    } catch (apiError) {
-      console.error('OpenAI API Error:', apiError)
-      if (apiError instanceof Error) {
-        console.error('API Error details:', {
-          message: apiError.message,
-          name: apiError.name,
-          stack: apiError.stack,
-          response: (apiError as any).response?.data
-        })
-      }
-      throw apiError
+    } catch (parseError) {
+      console.error('❌ Failed to parse GPT response:', parseError)
+      console.error('Raw response that failed parsing:', responseContent)
+      throw new Error('Could not parse OpenAI response as JSON')
     }
   } catch (error) {
-    console.error('Error in analyzeEmailWithGPT:', error)
+    console.error('❌ Error in analyzeEmailWithGPT:', error)
     if (error instanceof Error) {
       console.error('Error details:', {
-        message: error.message,
         name: error.name,
+        message: error.message,
         stack: error.stack
       })
     }
-    return {
-      riskLevel: 'Medium',
-      reason: 'Kunne ikke analysere e-posten på grunn av en teknisk feil. Vær ekstra oppmerksom.'
-    }
+    throw error // Re-throw to be handled by caller
   }
 }
 
 function normalizeRiskLevel(level: string): RiskLevel {
-  // Convert to lowercase for comparison
+  console.log('🔄 Normalizing risk level:', level)
   const normalized = level.toLowerCase().trim()
   
   if (normalized === 'lav' || normalized === 'low') {
@@ -261,218 +247,169 @@ async function getEmailBody(payload: any): Promise<string> {
 
 export async function POST() {
   try {
-    console.log('1. Starting email analysis process...')
+    console.log('🚀 Starting email analysis process...')
     
-    // Check all required environment variables
-    const requiredEnvVars = {
-      'OPENAI_API_KEY': process.env.OPENAI_API_KEY,
-      'NEXT_PUBLIC_GOOGLE_CLIENT_ID': process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-      'GOOGLE_CLIENT_SECRET': process.env.GOOGLE_CLIENT_SECRET,
-      'NEXT_PUBLIC_SITE_URL': process.env.NEXT_PUBLIC_SITE_URL
-    }
-
-    const missingVars = Object.entries(requiredEnvVars)
-      .filter(([_, value]) => !value)
-      .map(([key]) => key)
-
-    if (missingVars.length > 0) {
-      console.error('Missing required environment variables:', missingVars)
+    // Check OpenAI API key
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      console.error('❌ OpenAI API key is missing')
       return NextResponse.json(
-        { error: `Missing required environment variables: ${missingVars.join(', ')}` },
+        { error: 'OpenAI API key is not configured' },
         { status: 500 }
       )
     }
+    console.log('✅ OpenAI API key is configured')
 
-    console.log('Environment variables check passed')
-    
-    // Test OpenAI connection first
-    const apiKey = process.env.OPENAI_API_KEY!
-    console.log('2. Testing OpenAI connection...')
+    // Test OpenAI connection
+    console.log('🔍 Testing OpenAI connection...')
     const isConnected = await testOpenAIConnection(apiKey)
     if (!isConnected) {
-      console.error('Failed to connect to OpenAI API')
+      console.error('❌ Could not connect to OpenAI')
       return NextResponse.json(
         { error: 'Could not connect to OpenAI API' },
         { status: 500 }
       )
     }
-    console.log('3. OpenAI connection test successful')
+    console.log('✅ OpenAI connection test passed')
 
+    // Get Supabase session
     const supabase = createApiClient()
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
     if (sessionError) {
-      console.error('Session error:', sessionError)
+      console.error('❌ Session error:', sessionError)
       return NextResponse.json({ error: 'Session error' }, { status: 401 })
     }
 
     if (!session?.user) {
+      console.error('❌ No authenticated user found')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('4. Got authenticated session')
+    console.log('✅ Got authenticated session for user:', session.user.id)
 
-    // Get Gmail tokens
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('gmail_tokens')
-      .select('access_token, refresh_token')
-      .eq('user_id', session.user.id)
-      .single()
-
-    if (tokenError) {
-      console.error('Token error:', tokenError)
-      return NextResponse.json(
-        { error: 'Gmail tokens not found' },
-        { status: 404 }
-      )
-    }
-
-    if (!tokenData) {
-      return NextResponse.json(
-        { error: 'No Gmail tokens available' },
-        { status: 404 }
-      )
-    }
-
-    console.log('5. Got Gmail tokens')
-
-    // Set up Gmail client
-    oauth2Client.setCredentials({
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-    })
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
-
-    // Get last 10 emails
-    console.log('6. Fetching emails from Gmail...')
-    const response = await gmail.users.messages.list({
-      userId: 'me',
-      maxResults: 10,
-    }).catch(error => {
-      console.error('Gmail API error:', error)
-      throw new Error(`Gmail API error: ${error.message}`)
-    })
-
-    if (!response.data.messages) {
-      console.log('No messages found in Gmail')
-      return NextResponse.json({ newAnalyzedEmails: 0, emails: [] })
-    }
-
-    console.log('7. Got email list from Gmail:', response.data.messages.length, 'messages')
-
-    // Get existing email IDs
-    const { data: existingEmails, error: existingError } = await supabase
+    // Get unanalyzed emails
+    console.log('🔍 Fetching unanalyzed emails...')
+    const { data: unanalyzedEmails, error: emailsError } = await supabase
       .from('emails')
-      .select('id')
+      .select('*')
       .eq('user_id', session.user.id)
+      .is('analyzed_at', null)
+      .order('date', { ascending: false })
 
-    if (existingError) {
-      console.error('Error fetching existing emails:', existingError)
-      throw existingError
+    if (emailsError) {
+      console.error('❌ Error fetching unanalyzed emails:', emailsError)
+      throw emailsError
     }
 
-    console.log('8. Got existing email IDs from database')
+    console.log('📊 Unanalyzed emails query result:', {
+      count: unanalyzedEmails?.length || 0,
+      firstEmailId: unanalyzedEmails?.[0]?.id,
+      hasContent: unanalyzedEmails?.some(e => e.body && e.subject && e.from_address)
+    })
 
-    const existingIds = new Set(existingEmails?.map(e => e.id) || [])
-    const newEmails = []
+    if (!unanalyzedEmails || unanalyzedEmails.length === 0) {
+      console.log('ℹ️ No unanalyzed emails found')
+      return NextResponse.json({ 
+        newAnalyzedEmails: 0,
+        message: 'Ingen nye e-poster å analysere'
+      })
+    }
+
+    console.log(`📧 Found ${unanalyzedEmails.length} unanalyzed emails`)
+
+    const analyzedEmails = []
     const errors = []
 
-    console.log('9. Starting to process emails...')
-    // Process each new email
-    for (const message of response.data.messages) {
+    // Process each unanalyzed email
+    for (const email of unanalyzedEmails) {
       try {
-        console.log(`Processing email ${message.id}...`)
-        if (!existingIds.has(message.id!)) {
-          // Get full email content
-          console.log(`10. Fetching full content for email ${message.id}`)
-          const email = await gmail.users.messages.get({
-            userId: 'me',
-            id: message.id!,
-            format: 'full',
-          }).catch(error => {
-            console.error(`Error fetching email ${message.id}:`, error)
-            throw new Error(`Gmail get message error: ${error.message}`)
-          })
-
-          const headers = email.data.payload?.headers
-          const from = headers?.find(h => h.name === 'From')?.value || ''
-          const subject = headers?.find(h => h.name === 'Subject')?.value || ''
-          const date = headers?.find(h => h.name === 'Date')?.value || ''
-          
-          console.log(`11. Got email content for ${message.id}`)
-          
-          // Get email body
-          const body = await getEmailBody(email.data.payload)
-          console.log(`12. Extracted body for ${message.id}, length:`, body.length)
-
-          // Analyze with GPT
-          console.log(`13. Starting analysis for ${message.id}...`)
-          const analysis = await analyzeEmailWithGPT(
-            `From: ${from}\nSubject: ${subject}\n\n${body}`
-          )
-          console.log(`14. Completed analysis for ${message.id}:`, analysis)
-
-          // Store in database
-          console.log(`15. Storing email ${message.id} in database`)
-          const { data: emailData, error: emailError } = await supabase
-            .from('emails')
-            .upsert({
-              id: message.id,
-              user_id: session.user.id,
-              from_address: from,
-              subject,
-              date: new Date(date).toISOString(),
-              body,
-              ai_risk_level: analysis.riskLevel,
-              ai_reason: analysis.reason,
-            }, {
-              onConflict: 'id',
-              ignoreDuplicates: false
-            })
-            .select()
-            .single()
-
-          if (emailError) {
-            console.error('Error storing email:', emailError)
-            errors.push({
-              id: message.id,
-              error: 'Kunne ikke lagre e-post'
-            })
-            continue
-          }
-
-          console.log(`16. Successfully stored email ${message.id} in database`)
-          if (emailData) {
-            newEmails.push(emailData)
-          }
-        } else {
-          console.log(`Email ${message.id} already exists, skipping...`)
-        }
-      } catch (error) {
-        console.error(`Error processing email ${message.id}:`, error)
-        errors.push({
-          id: message.id,
-          error: error instanceof Error ? error.message : 'Kunne ikke prosessere e-post'
+        console.log(`\n🔄 Processing email ${email.id}...`)
+        console.log('Email details:', {
+          id: email.id,
+          hasBody: !!email.body,
+          bodyLength: email.body?.length,
+          hasSubject: !!email.subject,
+          hasFrom: !!email.from_address
         })
-        continue
+        
+        // Validate email content
+        if (!email.body || !email.subject || !email.from_address) {
+          console.warn(`⚠️ Skipping email ${email.id} - Missing required content`)
+          errors.push({
+            id: email.id,
+            error: 'Mangler nødvendig innhold for analyse'
+          })
+          continue
+        }
+
+        // Prepare email content for analysis
+        const emailContent = `From: ${email.from_address}\nSubject: ${email.subject}\n\n${email.body}`
+        
+        // Analyze with GPT
+        console.log(`🤖 Starting analysis for email ${email.id}...`)
+        const analysis = await analyzeEmailWithGPT(emailContent)
+        console.log(`✅ Analysis completed for ${email.id}:`, analysis)
+
+        // Update email with analysis results
+        console.log(`💾 Updating email ${email.id} with analysis results...`)
+        const { error: updateError } = await supabase
+          .from('emails')
+          .update({
+            ai_risk_level: analysis.riskLevel,
+            ai_reason: analysis.reason,
+            analyzed_at: new Date().toISOString()
+          })
+          .eq('id', email.id)
+
+        if (updateError) {
+          console.error(`❌ Error updating email ${email.id}:`, updateError)
+          errors.push({
+            id: email.id,
+            error: 'Kunne ikke lagre analyseresultat'
+          })
+          continue
+        }
+
+        console.log(`✅ Successfully updated email ${email.id}`)
+        analyzedEmails.push({
+          ...email,
+          ai_risk_level: analysis.riskLevel,
+          ai_reason: analysis.reason
+        })
+      } catch (error) {
+        console.error(`❌ Error processing email ${email.id}:`, error)
+        if (error instanceof Error) {
+          console.error('Detailed error:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          })
+        }
+        errors.push({
+          id: email.id,
+          error: error instanceof Error ? error.message : 'Kunne ikke analysere e-post'
+        })
       }
     }
 
-    console.log('17. Completed processing all emails')
-    console.log('New emails:', newEmails.length)
-    console.log('Errors:', errors.length)
+    console.log('\n📊 Analysis process summary:', {
+      totalEmails: unanalyzedEmails.length,
+      successfullyAnalyzed: analyzedEmails.length,
+      errors: errors.length
+    })
     
     return NextResponse.json({
-      newAnalyzedEmails: newEmails.length,
-      emails: newEmails,
+      newAnalyzedEmails: analyzedEmails.length,
+      emails: analyzedEmails,
       errors: errors.length > 0 ? errors : undefined
     })
   } catch (error) {
-    console.error('Error analyzing emails:', error)
+    console.error('❌ Fatal error in analyze-emails route:', error)
     if (error instanceof Error) {
       console.error('Error details:', {
-        message: error.message,
         name: error.name,
+        message: error.message,
         stack: error.stack
       })
     }
