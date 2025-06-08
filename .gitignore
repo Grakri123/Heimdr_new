@@ -1,2 +1,22 @@
-node_modules
+Next.js build output
+.next/
+out/
+
+# Environment variables
 .env.local
+.env.*.local
+
+# Node dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# System files
+.DS_Store
+*.swp
+
+# Optional: Supabase local data (if using CLI)
+.supabase/
