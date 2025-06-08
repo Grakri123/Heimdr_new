@@ -4,7 +4,7 @@ import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // This function can run for 5 minutes
+export const maxDuration = 60 // Maximum allowed duration for Vercel Hobby plan
 
 // Log available environment variables (without showing the actual values)
 console.log('Available environment variables:', Object.keys(process.env))

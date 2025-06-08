@@ -5,6 +5,10 @@ import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { analyzeNewEmail } from '@/lib/email/analyze'
 
+// Add dynamic route configuration
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,

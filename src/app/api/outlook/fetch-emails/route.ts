@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { analyzeNewEmail } from '@/lib/email/analyze'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // Maximum allowed duration for Vercel Hobby plan
 
 // Helper function to convert HTML to plain text
 function htmlToPlainText(html: string): string {
