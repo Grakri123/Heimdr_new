@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import type { Email } from '@/types/email'
+import { createClient } from '@/lib/supabase/client'
 
 interface RiskStatsProps {
   onRefresh: () => void
@@ -11,21 +12,20 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
   const [emails, setEmails] = useState<Email[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const { toast } = useToast()
+  const supabase = createClient()
 
   const fetchEmails = async () => {
     try {
-      const response = await fetch('/api/emails', {
-        // Add cache control to prevent stale data
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      })
-      if (!response.ok) {
-        throw new Error('Failed to fetch emails')
+      const { data, error } = await supabase
+        .from('emails')
+        .select('*')
+        .not('analyzed_at', 'is', null)
+
+      if (error) {
+        throw error
       }
-      const data = await response.json()
-      setEmails(data.emails || [])
+
+      setEmails(data || [])
     } catch (error) {
       console.error('Error fetching emails:', error)
       toast({
@@ -36,12 +36,33 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
     }
   }
 
-  // Add refresh interval
+  // Set up real-time subscription
   useEffect(() => {
     fetchEmails()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchEmails, 30000)
-    return () => clearInterval(interval)
+
+    // Subscribe to changes in the emails table
+    const subscription = supabase
+      .channel('emails-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen for all changes (insert, update, delete)
+          schema: 'public',
+          table: 'emails',
+        },
+        async (payload) => {
+          console.log('Database change detected:', payload)
+          // Refresh data when changes occur
+          await fetchEmails()
+          onRefresh()
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const runAnalysis = async () => {
@@ -77,13 +98,6 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
         }
         
         const data = await response.json()
-        
-        // Add a small delay before refreshing to ensure backend has processed everything
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Refresh data
-        await fetchEmails()
-        onRefresh()
         
         toast({
           title: 'Analyse fullført',
