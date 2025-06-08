@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "dev": "deno run --allow-net --allow-env analyze-emails.ts"
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "imports": {
+    "http/": "https://deno.land/std/http/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js"
+  }
+} 
