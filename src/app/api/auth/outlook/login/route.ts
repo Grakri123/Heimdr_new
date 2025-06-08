@@ -11,9 +11,9 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
+  if (!process.env.OUTLOOK_REDIRECT_URI) {
     return Response.json(
-      { error: 'Missing NEXT_PUBLIC_APP_URL configuration' },
+      { error: 'Missing OUTLOOK_REDIRECT_URI configuration' },
       { status: 500 }
     )
   }
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     client_id: process.env.OUTLOOK_CLIENT_ID,
     response_type: 'code',
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/outlook`,
+    redirect_uri: process.env.OUTLOOK_REDIRECT_URI,
     response_mode: 'query',
     scope: 'offline_access Mail.Read User.Read',
     prompt: 'consent'

@@ -7,6 +7,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing code param' }, { status: 400 })
   }
 
+  if (!process.env.OUTLOOK_REDIRECT_URI) {
+    return NextResponse.json({ error: 'Missing OUTLOOK_REDIRECT_URI configuration' }, { status: 500 })
+  }
+
   const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -15,7 +19,7 @@ export async function GET(req: NextRequest) {
       client_secret: process.env.OUTLOOK_CLIENT_SECRET!,
       code,
       grant_type: 'authorization_code',
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/outlook`,
+      redirect_uri: process.env.OUTLOOK_REDIRECT_URI,
     }),
   })
 
