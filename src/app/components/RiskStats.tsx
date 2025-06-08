@@ -14,7 +14,13 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
 
   const fetchEmails = async () => {
     try {
-      const response = await fetch('/api/emails')
+      const response = await fetch('/api/emails', {
+        // Add cache control to prevent stale data
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch emails')
       }
@@ -30,15 +36,18 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
     }
   }
 
+  // Add refresh interval
   useEffect(() => {
     fetchEmails()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchEmails, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   const runAnalysis = async () => {
     try {
       setIsAnalyzing(true)
       
-      // First fetch new emails from both sources
       const toastId = toast({
         title: 'Analyserer e-poster...',
         description: 'Vi henter inn nye e-poster fra Gmail og Outlook.',
@@ -68,6 +77,14 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
         }
         
         const data = await response.json()
+        
+        // Add a small delay before refreshing to ensure backend has processed everything
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Refresh data
+        await fetchEmails()
+        onRefresh()
+        
         toast({
           title: 'Analyse fullført',
           description: `${totalNew} nye e-poster hentet og analysert.`,
@@ -80,10 +97,6 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
           variant: 'default'
         })
       }
-      
-      // Refresh stats after analysis
-      await fetchEmails()
-      onRefresh()
     } catch (error) {
       console.error('Error during analysis:', error)
       toast({
