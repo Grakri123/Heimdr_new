@@ -17,7 +17,7 @@ module.exports = {
     extend: {
       colors: {
         'bronze': '#C47E36',      // Primærfarge
-        'ivory': '#F8F5F2',       // Bakgrunn
+        'white ': '#FFFFFF',       // Bakgrunn
         'charcoal': '#2A2A2A',    // Tekst
         'steel-blue': '#50667C',  // Aksent
         'success-green': '#6A8B5F',
