@@ -1,6 +1,5 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { createApiClient } from '@/lib/supabase/server'
 import { google } from 'googleapis'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { analyzeNewEmail } from '@/lib/email/analyze'
@@ -15,41 +14,58 @@ const oauth2Client = new google.auth.OAuth2(
   `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/integrations`
 )
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    // Get the user session from Supabase
-    const supabase = createServerClient()
-    const { data: { session } } = await supabase.auth.getSession()
+    const supabase = createApiClient()
 
-    if (!session?.user) {
-      console.log('📬 Gmail: Ingen bruker funnet')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // 👉 Try to get from header (Edge Function call)
+    const userIdHeader = req.headers.get('x-user-id')
+    const tokenHeader = req.headers.get('x-provider-token')
+
+    let userId = userIdHeader || null
+    let accessToken = tokenHeader || null
+
+    if (!userId || !accessToken) {
+      // 👉 Fallback to session (frontend call)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session?.user) {
+        console.log('📬 Gmail: No user found (neither from session nor header)')
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+
+      userId = session.user.id
+
+      // Get token from Supabase
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('gmail_tokens')
+        .select('access_token, refresh_token')
+        .eq('user_id', userId)
+        .single()
+
+      if (tokenError || !tokenData) {
+        console.log('📬 Gmail: No token found')
+        return NextResponse.json(
+          { error: 'Gmail token not found' },
+          { status: 404 }
+        )
+      }
+
+      accessToken = tokenData.access_token
+      
+      // Set up OAuth2 client with tokens
+      oauth2Client.setCredentials({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+      })
+    } else {
+      // Using header-provided token
+      oauth2Client.setCredentials({
+        access_token: accessToken
+      })
     }
 
-    console.log('📬 Gmail: Bruker ID =', session.user.id)
-
-    // Fetch Gmail token from Supabase
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('gmail_tokens')
-      .select('access_token, refresh_token')
-      .eq('user_id', session.user.id)
-      .single()
-
-    if (tokenError || !tokenData) {
-      console.log('📬 Gmail: Ingen token funnet')
-      return NextResponse.json(
-        { error: 'Gmail token not found' },
-        { status: 404 }
-      )
-    }
-
-    console.log('📬 Gmail: access_token =', tokenData.access_token.substring(0, 10) + '... (trunkert)')
-
-    // Set up OAuth2 client with tokens
-    oauth2Client.setCredentials({
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-    })
+    console.log('📬 Gmail: User ID =', userId)
+    console.log('📬 Gmail: access_token =', accessToken.substring(0, 10) + '... (truncated)')
 
     // Create Gmail API client
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
@@ -72,7 +88,7 @@ export async function GET() {
     const { data: existingEmails, error: existingError } = await supabase
       .from('emails')
       .select('message_id, analyzed_at')
-      .eq('user_id', session.user.id)
+      .eq('user_id', userId)
       .eq('source', 'gmail')
 
     if (existingError) {
@@ -113,7 +129,7 @@ export async function GET() {
 
         const emailData = {
           id: message.id,
-          user_id: session.user.id,
+          user_id: userId,
           from_address: from,
           subject,
           date: new Date(date).toISOString(),
