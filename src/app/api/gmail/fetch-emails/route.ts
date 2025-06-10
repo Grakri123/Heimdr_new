@@ -14,6 +14,79 @@ const oauth2Client = new google.auth.OAuth2(
   `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard/integrations`
 )
 
+// Helper function to refresh token and update in Supabase if needed
+async function refreshAccessToken(supabase: any, userId: string, currentRefreshToken?: string) {
+  try {
+    if (!currentRefreshToken) {
+      // Try to get refresh token from database if not provided
+      const { data: tokenData } = await supabase
+        .from('gmail_tokens')
+        .select('refresh_token')
+        .eq('user_id', userId)
+        .single()
+
+      if (!tokenData?.refresh_token) {
+        console.log('📬 Gmail: No refresh token available for refresh attempt')
+        return null
+      }
+      currentRefreshToken = tokenData.refresh_token
+    }
+
+    // Set refresh token and attempt refresh
+    oauth2Client.setCredentials({
+      refresh_token: currentRefreshToken
+    })
+
+    const { token: newAccessToken } = await oauth2Client.getAccessToken()
+    if (!newAccessToken) {
+      console.log('📬 Gmail: Token refresh failed - no new token received')
+      return null
+    }
+
+    // Update token in database
+    const { error: updateError } = await supabase
+      .from('gmail_tokens')
+      .update({ 
+        access_token: newAccessToken,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+
+    if (updateError) {
+      console.error('📬 Gmail: Failed to update refreshed token in database:', updateError)
+      return null
+    }
+
+    console.log('📬 Gmail: Successfully refreshed and updated access token')
+    return newAccessToken
+  } catch (error) {
+    console.error('📬 Gmail: Token refresh failed:', error)
+    return null
+  }
+}
+
+// Helper function to execute Gmail API call with retry on token error
+async function executeGmailApiCall<T>(apiCall: () => Promise<T>, supabase: any, userId: string): Promise<T> {
+  try {
+    return await apiCall()
+  } catch (error: any) {
+    // Check if error is due to invalid token
+    if (error?.message?.includes('invalid_token') || error?.message?.includes('Invalid Credentials')) {
+      console.log('📬 Gmail: Token error detected, attempting refresh...')
+      const newAccessToken = await refreshAccessToken(supabase, userId)
+      
+      if (!newAccessToken) {
+        throw new Error('Failed to refresh access token')
+      }
+
+      // Update client credentials and retry
+      oauth2Client.setCredentials({ access_token: newAccessToken })
+      return await apiCall()
+    }
+    throw error
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const supabase = createApiClient()
@@ -24,6 +97,7 @@ export async function GET(req: Request) {
 
     let userId = userIdHeader || null
     let accessToken = tokenHeader || null
+    let refreshToken: string | undefined
 
     if (!userId || !accessToken) {
       // 👉 Fallback to session (frontend call)
@@ -35,7 +109,7 @@ export async function GET(req: Request) {
 
       userId = session.user.id
 
-      // Get token from Supabase
+      // Get tokens from Supabase
       const { data: tokenData, error: tokenError } = await supabase
         .from('gmail_tokens')
         .select('access_token, refresh_token')
@@ -51,11 +125,12 @@ export async function GET(req: Request) {
       }
 
       accessToken = tokenData.access_token
+      refreshToken = tokenData.refresh_token
       
       // Set up OAuth2 client with tokens
       oauth2Client.setCredentials({
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token,
+        access_token: accessToken,
+        refresh_token: refreshToken,
       })
     } else {
       // Using header-provided token
@@ -70,11 +145,15 @@ export async function GET(req: Request) {
     // Create Gmail API client
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-    // Fetch last 10 emails
-    const response = await gmail.users.messages.list({
-      userId: 'me',
-      maxResults: 10,
-    })
+    // Fetch last 10 emails with automatic token refresh if needed
+    const response = await executeGmailApiCall(
+      () => gmail.users.messages.list({
+        userId: 'me',
+        maxResults: 10,
+      }),
+      supabase,
+      userId
+    )
 
     console.log('📬 Gmail: Status =', response.status)
     console.log('📬 Gmail: API-respons =', JSON.stringify(response.data, null, 2))
@@ -113,11 +192,15 @@ export async function GET(req: Request) {
       }
 
       try {
-        const email = await gmail.users.messages.get({
-          userId: 'me',
-          id: message.id!,
-          format: 'full',
-        })
+        const email = await executeGmailApiCall(
+          () => gmail.users.messages.get({
+            userId: 'me',
+            id: message.id!,
+            format: 'full',
+          }),
+          supabase,
+          userId
+        )
 
         const headers = email.data.payload?.headers
         const from = headers?.find((h) => h.name === 'From')?.value || ''
@@ -137,9 +220,9 @@ export async function GET(req: Request) {
           source: 'gmail',
           message_id: message.id,
           created_at: new Date().toISOString(),
-          analyzed_at: null,  // Explicitly set to null to force reanalysis
-          ai_risk_level: null,  // Reset analysis results
-          ai_reason: null  // Reset analysis results
+          analyzed_at: null,
+          ai_risk_level: null,
+          ai_reason: null
         }
 
         // Store in database using upsert
@@ -151,29 +234,29 @@ export async function GET(req: Request) {
           })
 
         if (upsertError) {
-          console.error('📬 Gmail: Feil ved lagring av e-post:', message.id, upsertError)
+          console.error('📬 Gmail: Error saving email:', message.id, upsertError)
           continue
         }
 
-        console.log('📬 Gmail: Lagret/oppdaterte e-post:', message.id, '(analyzed_at nullstilt)')
+        console.log('📬 Gmail: Saved/updated email:', message.id, '(analyzed_at reset)')
         newEmails.push(emailData)
 
         // Analyze the new email
         try {
-          console.log(`📊 Forbereder analyse av e-post ${message.id}:`, {
+          console.log(`📊 Preparing analysis of email ${message.id}:`, {
             hasFrom: !!from,
             hasSubject: !!subject,
             bodyLength: body?.length || 0
           })
           
           const emailContent = `From: ${from}\nSubject: ${subject}\n\n${body}`
-          console.log(`🤖 Starter analyse av e-post ${message.id}...`)
+          console.log(`🤖 Starting analysis of email ${message.id}...`)
           await analyzeNewEmail(supabase, message.id, emailContent)
-          console.log(`✅ Analyse fullført for e-post ${message.id}`)
+          console.log(`✅ Analysis completed for email ${message.id}`)
         } catch (analysisError) {
-          console.error(`❌ Feil ved analyse av e-post ${message.id}:`, analysisError)
+          console.error(`❌ Error analyzing email ${message.id}:`, analysisError)
           if (analysisError instanceof Error) {
-            console.error('Detaljert feil:', {
+            console.error('Detailed error:', {
               name: analysisError.name,
               message: analysisError.message,
               stack: analysisError.stack
@@ -181,17 +264,21 @@ export async function GET(req: Request) {
           }
           analysisErrors.push({
             id: message.id,
-            error: analysisError instanceof Error ? analysisError.message : 'Ukjent feil ved analyse'
+            error: analysisError instanceof Error ? analysisError.message : 'Unknown analysis error'
           })
         }
       } catch (error) {
-        console.error('📬 Gmail: Feil ved prosessering av e-post:', message.id, error)
+        console.error('📬 Gmail: Error processing email:', message.id, error)
+        if (error instanceof Error && error.message === 'Failed to refresh access token') {
+          console.log('📬 Gmail: Stopping email processing due to token refresh failure')
+          break
+        }
       }
     }
 
-    console.log(`📬 Gmail: Fant ${response.data.messages.length} e-poster. ${newEmails.length} nye ble lagret. ${skippedCount} eksisterte fra før.`)
+    console.log(`📬 Gmail: Found ${response.data.messages.length} emails. ${newEmails.length} new saved. ${skippedCount} already existed.`)
     if (analysisErrors.length > 0) {
-      console.log(`📬 Gmail: ${analysisErrors.length} e-poster kunne ikke analyseres:`, analysisErrors)
+      console.log(`📬 Gmail: ${analysisErrors.length} emails could not be analyzed:`, analysisErrors)
     }
 
     return NextResponse.json({
@@ -200,7 +287,19 @@ export async function GET(req: Request) {
       analysisErrors: analysisErrors.length > 0 ? analysisErrors : undefined
     })
   } catch (error) {
-    console.error('📬 Gmail: Uventet feil:', error)
+    console.error('📬 Gmail: Unexpected error:', error)
+    
+    // Check if error is related to authentication
+    if (error instanceof Error && 
+        (error.message.includes('invalid_token') || 
+         error.message.includes('Invalid Credentials') ||
+         error.message === 'Failed to refresh access token')) {
+      return NextResponse.json(
+        { error: 'Gmail authentication failed - please reconnect your account' },
+        { status: 401 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch emails' },
       { status: 500 }
