@@ -1,25 +1,62 @@
-import { createServerComponentClient, createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient as _createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
 
-// Cache the cookie store
-let cookieStore: ReturnType<typeof cookies>
+export const createServerClient = () => {
+  const cookieStore = cookies()
 
-function getCookieStore() {
-  if (!cookieStore) {
-    cookieStore = cookies()
-  }
-  return cookieStore
+  return _createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Handle cookie errors
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.delete({ name, ...options })
+          } catch (error) {
+            // Handle cookie errors
+          }
+        },
+      },
+    }
+  )
 }
 
-export function createServerClient() {
-  return createServerComponentClient<Database>({ 
-    cookies: () => getCookieStore()
-  })
-}
-
-export function createApiClient() {
-  return createRouteHandlerClient<Database>({ 
-    cookies: () => getCookieStore()
-  })
+export const createRouteHandlerClient = () => {
+  const cookieStore = cookies()
+  return _createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Handle cookie errors
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.delete({ name, ...options })
+          } catch (error) {
+            // Handle cookie errors
+          }
+        },
+      },
+    }
+  )
 } 
