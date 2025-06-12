@@ -94,7 +94,7 @@ export async function GET(req: Request) {
   try {
     const supabase = createServerClient()
 
-    // 👉 Try to get from header (Edge Function call)
+    // Try to get from header (Edge Function call)
     const userIdHeader = req.headers.get('x-user-id')
     const tokenHeader = req.headers.get('x-provider-token')
 
@@ -103,7 +103,7 @@ export async function GET(req: Request) {
     let refreshToken: string | undefined
 
     if (!userId || !accessToken) {
-      // 👉 Fallback to session (frontend call)
+      // Fallback to session (frontend call)
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       if (sessionError || !session?.user) {
         console.log('📬 Gmail: No user found (neither from session nor header)')
@@ -148,113 +148,87 @@ export async function GET(req: Request) {
     // Create Gmail API client
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-    // Fetch last 10 emails with automatic token refresh if needed
-    const response = await executeGmailApiCall(
-      () => gmail.users.messages.list({
+    // Get messages from Gmail
+    const response = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 10,
+      q: 'in:inbox -category:promotions -category:social -category:updates -category:forums',
+    })
+
+    const messages = response.data.messages || []
+    const processedEmails = []
+
+    for (const message of messages) {
+      const fullMessage = await gmail.users.messages.get({
         userId: 'me',
-        maxResults: 10,
-      }),
-      supabase,
-      userId
-    )
+        id: message.id!,
+        format: 'full',
+      })
 
-    console.log('📬 Gmail: Status =', response.status)
-    console.log('📬 Gmail: API-respons =', JSON.stringify(response.data, null, 2))
+      const headers = fullMessage.data.payload?.headers || []
+      const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject'
+      const from = headers.find(h => h.name === 'From')?.value || 'Unknown Sender'
+      const date = new Date(parseInt(fullMessage.data.internalDate!)).toISOString()
 
-    if (!response.data.messages) {
-      console.log('📬 Gmail: Ingen e-poster funnet')
-      return NextResponse.json({ emails: [] })
-    }
-
-    // Get existing email IDs to avoid duplicates
-    const { data: existingEmails, error: existingError } = await supabase
-      .from('emails')
-      .select('message_id, analyzed_at')
-      .eq('user_id', userId)
-      .eq('source', 'gmail')
-
-    if (existingError) {
-      console.error('📬 Gmail: Feil ved henting av eksisterende e-poster:', existingError)
-      throw existingError
-    }
-
-    // Create a map of existing IDs with their analyzed status
-    const existingEmailMap = new Map(
-      existingEmails?.map(e => [e.message_id, e.analyzed_at !== null]) || []
-    )
-    const newEmails = []
-    let skippedCount = 0
-    const analysisErrors = []
-
-    // Process each email
-    for (const message of response.data.messages) {
-      // Skip only if email exists AND has been analyzed
-      if (existingEmailMap.has(message.id) && existingEmailMap.get(message.id)) {
-        skippedCount++
-        continue
+      // Extract email body
+      let body = ''
+      if (fullMessage.data.payload?.parts) {
+        const textPart = fullMessage.data.payload.parts.find(part => 
+          part.mimeType === 'text/plain' || part.mimeType === 'text/html'
+        )
+        if (textPart?.body?.data) {
+          body = Buffer.from(textPart.body.data, 'base64').toString()
+        }
+      } else if (fullMessage.data.payload?.body?.data) {
+        body = Buffer.from(fullMessage.data.payload.body.data, 'base64').toString()
       }
 
-      try {
-        const email = await executeGmailApiCall(
-          () => gmail.users.messages.get({
-            userId: 'me',
-            id: message.id!,
-            format: 'full',
-          }),
-          supabase,
-          userId
-        )
+      // Store in Supabase
+      const { data: existingEmail } = await supabase
+        .from('emails')
+        .select('id')
+        .eq('message_id', message.id)
+        .single()
 
-        const headers = email.data.payload?.headers
-        const from = headers?.find((h) => h.name === 'From')?.value || ''
-        const subject = headers?.find((h) => h.name === 'Subject')?.value || ''
-        const date = headers?.find((h) => h.name === 'Date')?.value || ''
-
-        // Get email body
-        const body = await getEmailBody(email.data.payload)
-
-        const emailData = {
-          id: message.id,
-          user_id: userId,
-          from_address: from,
-          subject,
-          date: new Date(date).toISOString(),
-          body,
-          source: 'gmail',
-          message_id: message.id,
-          created_at: new Date().toISOString(),
-          analyzed_at: null,
-          ai_risk_level: null,
-          ai_reason: null
-        }
-
-        // Store in database using upsert
-        const { error: upsertError } = await supabase
+      if (!existingEmail) {
+        const { data: newEmail, error: insertError } = await supabase
           .from('emails')
-          .upsert(emailData, {
-            onConflict: 'id',
-            ignoreDuplicates: false
+          .insert({
+            user_id: userId,
+            message_id: message.id,
+            subject,
+            from,
+            body,
+            date,
+            provider: 'gmail'
           })
+          .select()
+          .single()
 
-        if (upsertError) {
-          console.error('📬 Gmail: Error saving email:', message.id, upsertError)
+        if (insertError) {
+          console.error('Error storing email:', insertError)
           continue
         }
 
-        console.log('📬 Gmail: Saved/updated email:', message.id, '(analyzed_at reset)')
-        newEmails.push(emailData)
+        if (newEmail) {
+          processedEmails.push(newEmail)
+        }
+      }
+    }
 
-        // Analyze the new email
-        try {
-          console.log(`📊 Preparing analysis of email ${message.id}:`, {
-            hasFrom: !!from,
-            hasSubject: !!subject,
-            bodyLength: body?.length || 0
-          })
-          
-          const emailContent = `From: ${from}\nSubject: ${subject}\n\n${body}`
-          console.log(`🤖 Starting analysis of email ${message.id}...`)
-          await analyzeNewEmail(supabase, message.id, emailContent)
-          console.log(`✅ Analysis completed for email ${message.id}`)
-        } catch (analysisError) {
-          console.error(`
+    return NextResponse.json({ 
+      message: `Processed ${processedEmails.length} new emails`,
+      emails: processedEmails
+    })
+
+  } catch (error: any) {
+    console.error('Error fetching Gmail messages:', error)
+
+    // Check for token expiration
+    if (error.message?.includes('invalid_grant') || error.message?.includes('Invalid Credentials')) {
+      return NextResponse.json({ error: 'Gmail authentication failed - please reconnect your account' }, { status: 401 })
+    }
+
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
+  }
+}

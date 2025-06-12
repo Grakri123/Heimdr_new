@@ -10,15 +10,7 @@ const nextConfig = {
       'https': false,
     };
     return config;
-  },
-  // Add proper handling for dynamic routes
-  experimental: {
-    serverActions: true,
-  },
-  // Configure serverless function settings
-  serverless: {
-    maxDuration: 60, // Set to maximum allowed for hobby plan (60 seconds)
   }
 }
 
-module.exports = nextConfig 
+module.exports = nextConfig
