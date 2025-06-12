@@ -1,7 +1,8 @@
-import { serve } from 'https://deno.land/std/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js'
+import { serve } from 'std/http/server'
+import { createClient } from '@supabase/supabase-js'
 
 const BATCH_SIZE = 100
+const APP_URL = Deno.env.get('APP_URL') || 'https://www.heimdr.no'
 
 serve(async (req) => {
   // Only allow scheduled CRON invocations
@@ -55,19 +56,21 @@ serve(async (req) => {
             .single()
 
           if (gmailTokens.data) {
-            const gmailResponse = await fetch(
-              `${Deno.env.get('NEXT_PUBLIC_APP_URL')}/api/gmail/fetch-emails`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${gmailTokens.data.access_token}`
-                }
-              }
-            )
+            const gmailResponse = await fetch(`${APP_URL}/api/gmail/fetch-emails`, {
+              headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'X-User-Id': user.id,
+                'X-Provider-Token': gmailTokens.data.access_token,
+                'X-Client-Info': 'service_role',
+              },
+            })
             if (!gmailResponse.ok) {
+              const errorText = await gmailResponse.text()
+              console.error('Gmail Error Response:', errorText)
               errors.push({
                 user_id: user.id,
                 service: 'gmail',
-                error: await gmailResponse.text()
+                error: errorText,
               })
             }
           }
@@ -80,19 +83,21 @@ serve(async (req) => {
             .single()
 
           if (outlookTokens.data) {
-            const outlookResponse = await fetch(
-              `${Deno.env.get('NEXT_PUBLIC_APP_URL')}/api/outlook/fetch-emails`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${outlookTokens.data.access_token}`
-                }
-              }
-            )
+            const outlookResponse = await fetch(`${APP_URL}/api/outlook/fetch-emails`, {
+              headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'X-User-Id': user.id,
+                'X-Provider-Token': outlookTokens.data.access_token,
+                'X-Client-Info': 'service_role',
+              },
+            })
             if (!outlookResponse.ok) {
+              const errorText = await outlookResponse.text()
+              console.error('Outlook Error Response:', errorText)
               errors.push({
                 user_id: user.id,
                 service: 'outlook',
-                error: await outlookResponse.text()
+                error: errorText,
               })
             }
           }

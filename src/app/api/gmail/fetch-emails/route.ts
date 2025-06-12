@@ -19,13 +19,13 @@ async function refreshAccessToken(supabase: any, userId: string, currentRefreshT
   try {
     if (!currentRefreshToken) {
       // Try to get refresh token from database if not provided
-      const { data: tokenData } = await supabase
+      const { data: tokenData, error: tokenError } = await supabase
         .from('gmail_tokens')
         .select('refresh_token')
         .eq('user_id', userId)
         .single()
 
-      if (!tokenData?.refresh_token) {
+      if (tokenError || !tokenData?.refresh_token) {
         console.log('📬 Gmail: No refresh token available for refresh attempt')
         return null
       }
@@ -37,7 +37,9 @@ async function refreshAccessToken(supabase: any, userId: string, currentRefreshT
       refresh_token: currentRefreshToken
     })
 
-    const { token: newAccessToken } = await oauth2Client.getAccessToken()
+    const { credentials } = await oauth2Client.refreshAccessToken()
+    const newAccessToken = credentials.access_token
+    
     if (!newAccessToken) {
       console.log('📬 Gmail: Token refresh failed - no new token received')
       return null
@@ -48,6 +50,7 @@ async function refreshAccessToken(supabase: any, userId: string, currentRefreshT
       .from('gmail_tokens')
       .update({ 
         access_token: newAccessToken,
+        refresh_token: credentials.refresh_token || currentRefreshToken, // Use new refresh token if provided
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)

@@ -14,6 +14,51 @@ function htmlToPlainText(html: string): string {
     .trim()
 }
 
+// Helper function to refresh token and update in Supabase
+async function refreshOutlookToken(supabase: any, userId: string, refreshToken: string) {
+  try {
+    const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.OUTLOOK_CLIENT_ID!,
+        client_secret: process.env.OUTLOOK_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+        redirect_uri: process.env.OUTLOOK_REDIRECT_URI!,
+      }),
+    })
+
+    const tokenData = await tokenRes.json()
+    
+    if (!tokenData.access_token) {
+      console.error('Token refresh failed:', tokenData)
+      return null
+    }
+
+    // Update token in database
+    const { error: updateError } = await supabase
+      .from('outlook_tokens')
+      .update({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || refreshToken, // Use new refresh token if provided
+        expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+
+    if (updateError) {
+      console.error('Failed to update refreshed token in database:', updateError)
+      return null
+    }
+
+    return tokenData.access_token
+  } catch (error) {
+    console.error('Token refresh failed:', error)
+    return null
+  }
+}
+
 export async function GET(req: Request) {
   const supabase = createApiClient()
 
@@ -23,6 +68,7 @@ export async function GET(req: Request) {
 
   let userId = userIdHeader || null
   let accessToken = tokenHeader || null
+  let refreshToken: string | null = null
 
   if (!userId || !accessToken) {
     // 👉 Fallback til session (frontend-kall)
@@ -37,7 +83,7 @@ export async function GET(req: Request) {
     // Hent token fra Supabase
     const { data: tokenData } = await supabase
       .from('outlook_tokens')
-      .select('access_token')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .single()
 
@@ -46,10 +92,20 @@ export async function GET(req: Request) {
     }
 
     accessToken = tokenData.access_token
+    refreshToken = tokenData.refresh_token
+  } else {
+    // Hvis vi bruker header-provided token, hent refresh token fra databasen
+    const { data: tokenData } = await supabase
+      .from('outlook_tokens')
+      .select('refresh_token')
+      .eq('user_id', userId)
+      .single()
+    
+    refreshToken = tokenData?.refresh_token || null
   }
 
   // Fetch eposter fra Outlook
-  const response = await fetch('https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
+  let response = await fetch('https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
     $select: 'id,subject,bodyPreview,body,from,receivedDateTime',
     $orderby: 'receivedDateTime desc',
     $top: '10',
@@ -60,10 +116,42 @@ export async function GET(req: Request) {
     },
   })
 
+  // If token is expired, try to refresh it
+  if (!response.ok && response.status === 401 && refreshToken) {
+    console.log('📧 Outlook: Token expired, attempting refresh...')
+    const newAccessToken = await refreshOutlookToken(supabase, userId!, refreshToken)
+    
+    if (!newAccessToken) {
+      return NextResponse.json(
+        { error: 'Outlook authentication failed - please reconnect your account' },
+        { status: 401 }
+      )
+    }
+
+    // Retry with new token
+    accessToken = newAccessToken
+    response = await fetch('https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
+      $select: 'id,subject,bodyPreview,body,from,receivedDateTime',
+      $orderby: 'receivedDateTime desc',
+      $top: '10',
+    }), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
   const data = await response.json()
 
   if (!response.ok) {
     console.error('📧 Outlook API-feil:', data)
+    if (response.status === 401) {
+      return NextResponse.json(
+        { error: 'Outlook authentication failed - please reconnect your account' },
+        { status: 401 }
+      )
+    }
     return NextResponse.json({ error: 'Failed to fetch emails from Outlook' }, { status: response.status })
   }
 
