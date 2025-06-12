@@ -17,6 +17,11 @@ export async function GET(request: Request) {
       
       if (signInError) {
         console.error('Sign in error:', signInError)
+        // Check if error is related to code verifier or auth code
+        if (signInError.message?.toLowerCase().includes('code verifier') || 
+            signInError.message?.toLowerCase().includes('auth code')) {
+          return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=session_expired`)
+        }
         return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=auth_error&details=${encodeURIComponent(signInError.message)}`)
       }
 
