@@ -197,7 +197,7 @@ export async function GET(req: Request) {
             user_id: userId,
             message_id: message.id,
             subject,
-            from,
+            from_address: from,
             body,
             date,
             provider: 'gmail'

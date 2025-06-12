@@ -159,7 +159,7 @@ export async function GET(req: Request) {
             user_id: userId,
             message_id: message.id,
             subject: message.subject,
-            from: message.from.emailAddress.address,
+            from_address: message.from.emailAddress.address,
             body: message.body.content ? htmlToPlainText(message.body.content) : '',
             date: message.receivedDateTime,
             provider: 'outlook'
