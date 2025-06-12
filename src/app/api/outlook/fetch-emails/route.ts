@@ -162,7 +162,7 @@ export async function GET(req: Request) {
             from_address: message.from.emailAddress.address,
             body: message.body.content ? htmlToPlainText(message.body.content) : '',
             date: message.receivedDateTime,
-            provider: 'outlook'
+            source: 'outlook'
           })
           .select()
           .single()

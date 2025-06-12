@@ -200,7 +200,7 @@ export async function GET(req: Request) {
             from_address: from,
             body,
             date,
-            provider: 'gmail'
+            source: 'gmail'
           })
           .select()
           .single()
