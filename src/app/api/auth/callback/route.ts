@@ -1,4 +1,4 @@
-import { createApiClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const code = requestUrl.searchParams.get('code')
     
     if (code) {
-      const supabase = createApiClient()
+      const supabase = createServerClient()
 
       // Exchange the code for a session
       const { error: signInError } = await supabase.auth.exchangeCodeForSession(code)

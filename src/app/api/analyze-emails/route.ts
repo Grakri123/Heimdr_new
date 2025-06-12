@@ -1,4 +1,4 @@
-import { createApiClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 import { google } from 'googleapis'
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
@@ -273,7 +273,7 @@ export async function POST() {
     console.log('✅ OpenAI connection test passed')
 
     // Get Supabase session
-    const supabase = createApiClient()
+    const supabase = createServerClient()
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
     if (sessionError) {
@@ -415,6 +415,41 @@ export async function POST() {
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to analyze emails' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = createServerClient()
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError || !session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get unanalyzed emails
+    const { data: emails, error: emailsError } = await supabase
+      .from('emails')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .is('analyzed_at', null)
+      .order('date', { ascending: false })
+
+    if (emailsError) {
+      console.error('Error fetching emails:', emailsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch emails' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ emails: emails || [] })
+  } catch (error) {
+    console.error('Error in GET /api/analyze-emails:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

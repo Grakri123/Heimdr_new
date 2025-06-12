@@ -1,4 +1,4 @@
-import { createApiClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { analyzeNewEmail } from '@/lib/email/analyze'
 
@@ -60,149 +60,143 @@ async function refreshOutlookToken(supabase: any, userId: string, refreshToken: 
 }
 
 export async function GET(req: Request) {
-  const supabase = createApiClient()
+  try {
+    const supabase = createServerClient()
 
-  // 👉 Forsøk å hente fra header (Edge Function-kall)
-  const userIdHeader = req.headers.get('x-user-id')
-  const tokenHeader = req.headers.get('x-provider-token')
+    // Try to get from header (Edge Function call)
+    const userIdHeader = req.headers.get('x-user-id')
+    const tokenHeader = req.headers.get('x-provider-token')
 
-  let userId = userIdHeader || null
-  let accessToken = tokenHeader || null
-  let refreshToken: string | null = null
+    let userId = userIdHeader || null
+    let accessToken = tokenHeader || null
+    let refreshToken: string | undefined
 
-  if (!userId || !accessToken) {
-    // 👉 Fallback til session (frontend-kall)
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    if (sessionError || !session?.user) {
-      console.log('📧 Outlook: Ingen bruker (hverken fra session eller header)')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!userId || !accessToken) {
+      // Fallback to session (frontend call)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session?.user) {
+        console.log('📬 Outlook: No user found (neither from session nor header)')
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+
+      userId = session.user.id
+
+      // Get tokens from Supabase
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('outlook_tokens')
+        .select('access_token, refresh_token, expires_at')
+        .eq('user_id', userId)
+        .single()
+
+      if (tokenError || !tokenData) {
+        console.log('📬 Outlook: No token found')
+        return NextResponse.json(
+          { error: 'Outlook token not found' },
+          { status: 404 }
+        )
+      }
+
+      // Check if token is expired
+      const expiresAt = new Date(tokenData.expires_at)
+      if (expiresAt <= new Date()) {
+        console.log('📬 Outlook: Token expired, refreshing...')
+        const newAccessToken = await refreshOutlookToken(supabase, userId, tokenData.refresh_token)
+        if (!newAccessToken) {
+          return NextResponse.json(
+            { error: 'Failed to refresh Outlook token' },
+            { status: 401 }
+          )
+        }
+        accessToken = newAccessToken
+      } else {
+        accessToken = tokenData.access_token
+        refreshToken = tokenData.refresh_token
+      }
     }
 
-    userId = session.user.id
-
-    // Hent token fra Supabase
-    const { data: tokenData } = await supabase
-      .from('outlook_tokens')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .single()
-
-    if (!tokenData) {
-      return NextResponse.json({ error: 'Outlook token not found' }, { status: 404 })
-    }
-
-    accessToken = tokenData.access_token
-    refreshToken = tokenData.refresh_token
-  } else {
-    // Hvis vi bruker header-provided token, hent refresh token fra databasen
-    const { data: tokenData } = await supabase
-      .from('outlook_tokens')
-      .select('refresh_token')
-      .eq('user_id', userId)
-      .single()
-    
-    refreshToken = tokenData?.refresh_token || null
-  }
-
-  // Fetch eposter fra Outlook
-  let response = await fetch('https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
-    $select: 'id,subject,bodyPreview,body,from,receivedDateTime',
-    $orderby: 'receivedDateTime desc',
-    $top: '10',
-  }), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  })
-
-  // If token is expired, try to refresh it
-  if (!response.ok && response.status === 401 && refreshToken) {
-    console.log('📧 Outlook: Token expired, attempting refresh...')
-    const newAccessToken = await refreshOutlookToken(supabase, userId!, refreshToken)
-    
-    if (!newAccessToken) {
-      return NextResponse.json(
-        { error: 'Outlook authentication failed - please reconnect your account' },
-        { status: 401 }
-      )
-    }
-
-    // Retry with new token
-    accessToken = newAccessToken
-    response = await fetch('https://graph.microsoft.com/v1.0/me/messages?' + new URLSearchParams({
-      $select: 'id,subject,bodyPreview,body,from,receivedDateTime',
-      $orderby: 'receivedDateTime desc',
-      $top: '10',
-    }), {
+    // Fetch emails from Outlook
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime desc', {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
     })
-  }
 
-  const data = await response.json()
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Outlook API error:', errorData)
 
-  if (!response.ok) {
-    console.error('📧 Outlook API-feil:', data)
-    if (response.status === 401) {
+      // Check for auth errors
+      if (response.status === 401) {
+        return NextResponse.json(
+          { error: 'Outlook authentication failed - please reconnect your account' },
+          { status: 401 }
+        )
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to fetch Outlook messages' },
+        { status: response.status }
+      )
+    }
+
+    const data = await response.json()
+    const messages = data.value || []
+    const processedEmails = []
+
+    for (const message of messages) {
+      // Store in Supabase
+      const { data: existingEmail } = await supabase
+        .from('emails')
+        .select('id')
+        .eq('message_id', message.id)
+        .single()
+
+      if (!existingEmail) {
+        const { data: newEmail, error: insertError } = await supabase
+          .from('emails')
+          .insert({
+            user_id: userId,
+            message_id: message.id,
+            subject: message.subject,
+            from: message.from.emailAddress.address,
+            body: message.body.content ? htmlToPlainText(message.body.content) : '',
+            date: message.receivedDateTime,
+            provider: 'outlook'
+          })
+          .select()
+          .single()
+
+        if (insertError) {
+          console.error('Error storing email:', insertError)
+          continue
+        }
+
+        if (newEmail) {
+          processedEmails.push(newEmail)
+        }
+      }
+    }
+
+    return NextResponse.json({ 
+      message: `Processed ${processedEmails.length} new emails`,
+      emails: processedEmails
+    })
+
+  } catch (error: any) {
+    console.error('Error fetching Outlook messages:', error)
+
+    // Check for token expiration
+    if (error.message?.includes('InvalidAuthenticationToken')) {
       return NextResponse.json(
         { error: 'Outlook authentication failed - please reconnect your account' },
         { status: 401 }
       )
     }
-    return NextResponse.json({ error: 'Failed to fetch emails from Outlook' }, { status: response.status })
+
+    return NextResponse.json(
+      { error: 'Failed to fetch messages' },
+      { status: 500 }
+    )
   }
-
-  const existing = await supabase
-    .from('emails')
-    .select('message_id, analyzed_at')
-    .eq('user_id', userId)
-    .eq('source', 'outlook')
-
-  const existingMap = new Map(existing.data?.map(e => [e.message_id, e.analyzed_at !== null]) || [])
-  const newEmails = []
-  const analysisErrors = []
-
-  for (const msg of data.value || []) {
-    if (existingMap.get(msg.id)) continue
-
-    const email = {
-      id: msg.id,
-      user_id: userId,
-      from_address: msg.from?.emailAddress?.address || '',
-      subject: msg.subject || '',
-      date: msg.receivedDateTime,
-      body: htmlToPlainText(msg.body?.content || msg.bodyPreview || ''),
-      source: 'outlook',
-      message_id: msg.id,
-      created_at: new Date().toISOString(),
-      analyzed_at: null,
-      ai_risk_level: null,
-      ai_reason: null,
-    }
-
-    const { error: upsertError } = await supabase.from('emails').upsert(email, { onConflict: 'id' })
-    if (upsertError) {
-      console.error(`📧 Feil ved lagring: ${msg.id}`, upsertError)
-      continue
-    }
-
-    newEmails.push(email)
-
-    try {
-      const content = `From: ${email.from_address}\nSubject: ${email.subject}\n\n${email.body}`
-      await analyzeNewEmail(supabase, msg.id, content)
-    } catch (err) {
-      console.error(`❌ Feil ved analyse av ${msg.id}`, err)
-      analysisErrors.push({ id: msg.id, error: err instanceof Error ? err.message : 'Ukjent feil' })
-    }
-  }
-
-  return NextResponse.json({
-    newEmails: newEmails.length,
-    emails: newEmails,
-    analysisErrors: analysisErrors.length > 0 ? analysisErrors : undefined,
-  })
 }

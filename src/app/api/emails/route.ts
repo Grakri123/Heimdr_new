@@ -1,11 +1,11 @@
-import { createApiClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const supabase = createApiClient()
+    const supabase = createServerClient()
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
     if (sessionError) {

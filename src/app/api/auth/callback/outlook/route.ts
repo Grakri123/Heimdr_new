@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createApiClient } from '@/lib/supabase/server'
+import { createServerClient } from '@/lib/supabase/server'
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code')
@@ -47,27 +47,32 @@ export async function GET(req: NextRequest) {
   }
 
   // Store in Supabase
-  const supabase = createApiClient()
+  const supabase = createServerClient()
   const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
   if (sessionError || !session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { error: upsertError } = await supabase.from('outlook_tokens').upsert({
-    user_id: session.user.id,
-    access_token: tokenData.access_token,
-    refresh_token: tokenData.refresh_token,
-    expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-    email: userEmail
-  })
+  // Store the tokens
+  const { error: upsertError } = await supabase
+    .from('outlook_tokens')
+    .upsert({
+      user_id: session.user.id,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+      email: userEmail,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'user_id'
+    })
 
   if (upsertError) {
-    console.error('Error storing Outlook tokens:', upsertError)
-    return NextResponse.json({ error: 'Failed to store tokens' }, { status: 500 })
+    console.error('Failed to store token:', upsertError)
+    return NextResponse.json({ error: 'Failed to store token' }, { status: 500 })
   }
 
-  // Use absolute URL for redirect
-  const dashboardUrl = new URL('/dashboard', process.env.NEXT_PUBLIC_APP_URL).toString()
-  return NextResponse.redirect(dashboardUrl)
+  // Redirect back to the app
+  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/integrations?success=true`)
 } 
