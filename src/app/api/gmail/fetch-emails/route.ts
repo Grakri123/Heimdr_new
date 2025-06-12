@@ -194,6 +194,7 @@ export async function GET(req: Request) {
         const { data: newEmail, error: insertError } = await supabase
           .from('emails')
           .insert({
+            id: message.id,
             user_id: userId,
             message_id: message.id,
             subject,
