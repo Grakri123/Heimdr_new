@@ -36,18 +36,31 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkGmailTokens = async () => {
       try {
+        // Get current user first
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        
+        if (userError || !user) {
+          console.error('Error getting user:', userError)
+          return
+        }
+
         // Check if user has Gmail tokens
         const { data: tokenData, error: tokenError } = await supabase
           .from('gmail_tokens')
           .select('access_token')
+          .eq('user_id', user.id)
           .single()
 
         if (!tokenError && tokenData) {
           setHasGmailTokens(true)
           await refreshData()
+        } else {
+          console.log('No Gmail tokens found for user:', user.id)
+          setHasGmailTokens(false)
         }
       } catch (error) {
         console.error('Error checking Gmail tokens:', error)
+        setHasGmailTokens(false)
       } finally {
         setLoading(false)
       }
