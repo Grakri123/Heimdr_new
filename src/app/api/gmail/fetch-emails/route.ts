@@ -212,6 +212,14 @@ export async function GET(req: Request) {
         }
 
         if (newEmail) {
+          // Analyze the new email
+          try {
+            const emailContent = `From: ${newEmail.from_address}\nSubject: ${newEmail.subject}\n\n${newEmail.body}`
+            await analyzeNewEmail(supabase, newEmail.id, emailContent)
+            console.log('📬 Gmail: Successfully analyzed email:', newEmail.id)
+          } catch (error) {
+            console.error('📬 Gmail: Error analyzing email:', error)
+          }
           processedEmails.push(newEmail)
         }
       }
