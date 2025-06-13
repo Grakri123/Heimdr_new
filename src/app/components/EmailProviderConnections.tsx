@@ -40,24 +40,46 @@ export default function EmailProviderConnections() {
   useEffect(() => {
     const checkConnections = async () => {
       try {
+        // Get current user first
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+        
+        if (userError || !user) {
+          console.error('Error getting user:', userError)
+          return
+        }
+
         // Check Gmail tokens
-        const { data: gmailData } = await supabase
+        const { data: gmailData, error: gmailError } = await supabase
           .from('gmail_tokens')
           .select('access_token, email')
+          .eq('user_id', user.id)
           .single()
-        setHasGmailTokens(!!gmailData)
-        if (gmailData?.email) {
-          setGmailEmail(gmailData.email)
+
+        if (!gmailError && gmailData) {
+          setHasGmailTokens(true)
+          if (gmailData.email) {
+            setGmailEmail(gmailData.email)
+          }
+        } else {
+          console.log('No Gmail tokens found for user:', user.id)
+          setHasGmailTokens(false)
         }
 
         // Check Outlook tokens
-        const { data: outlookData } = await supabase
+        const { data: outlookData, error: outlookError } = await supabase
           .from('outlook_tokens')
           .select('access_token, email')
+          .eq('user_id', user.id)
           .single()
-        setHasOutlookTokens(!!outlookData)
-        if (outlookData?.email) {
-          setOutlookEmail(outlookData.email)
+
+        if (!outlookError && outlookData) {
+          setHasOutlookTokens(true)
+          if (outlookData.email) {
+            setOutlookEmail(outlookData.email)
+          }
+        } else {
+          console.log('No Outlook tokens found for user:', user.id)
+          setHasOutlookTokens(false)
         }
       } catch (error) {
         console.error('Error checking connections:', error)

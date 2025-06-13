@@ -12,6 +12,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [emails, setEmails] = useState<Email[]>([])
   const [hasGmailTokens, setHasGmailTokens] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
   const supabase = createClientComponentClient()
 
   const refreshData = async () => {
@@ -39,27 +40,36 @@ export default function DashboardPage() {
         // Get current user first
         const { data: { user }, error: userError } = await supabase.auth.getUser()
         
+        console.log('Current user:', user?.id)
+        setDebugInfo(prev => ({ ...prev, user }))
+        
         if (userError || !user) {
           console.error('Error getting user:', userError)
+          setDebugInfo(prev => ({ ...prev, userError }))
           return
         }
 
         // Check if user has Gmail tokens
         const { data: tokenData, error: tokenError } = await supabase
           .from('gmail_tokens')
-          .select('access_token')
+          .select('*')
           .eq('user_id', user.id)
           .single()
 
-        if (!tokenError && tokenData) {
+        console.log('Token check result:', { tokenData, tokenError })
+        setDebugInfo(prev => ({ ...prev, tokenData, tokenError }))
+
+        if (!tokenError && tokenData?.access_token) {
+          console.log('Found valid token for user')
           setHasGmailTokens(true)
           await refreshData()
         } else {
-          console.log('No Gmail tokens found for user:', user.id)
+          console.log('No valid Gmail tokens found for user:', user.id)
           setHasGmailTokens(false)
         }
       } catch (error) {
         console.error('Error checking Gmail tokens:', error)
+        setDebugInfo(prev => ({ ...prev, error }))
         setHasGmailTokens(false)
       } finally {
         setLoading(false)
@@ -91,6 +101,12 @@ export default function DashboardPage() {
           >
             Koble til Gmail
           </Button>
+          {process.env.NODE_ENV === 'development' && debugInfo && (
+            <pre className="mt-8 text-left text-xs bg-gray-100 p-4 rounded">
+              Debug info:
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          )}
         </div>
       </div>
     )
