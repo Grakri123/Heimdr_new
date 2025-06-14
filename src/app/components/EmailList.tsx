@@ -45,12 +45,6 @@ export default function EmailList({ emails, onRefresh }: EmailListProps) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-semibold">E-poster</h2>
-        <Button 
-          onClick={runAnalysis} 
-          disabled={isAnalyzing}
-        >
-          {isAnalyzing ? 'Kjører AI-analyse...' : 'Analyser nye e-poster'}
-        </Button>
       </div>
 
       <div className="space-y-4">

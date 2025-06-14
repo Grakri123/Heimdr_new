@@ -112,27 +112,6 @@ export default function DashboardPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-8">
-      {!hasGmailTokens && !hasOutlookTokens && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
-          <AlertCircle className="h-5 w-5 text-blue-500" />
-          <div className="flex-1">
-            <p className="text-blue-700">
-              Ingen e-posttilkobling aktiv – viser tidligere analyserte e-poster
-            </p>
-            <div className="mt-2">
-              <Button 
-                onClick={() => window.location.href = '/dashboard/integrations'}
-                variant="outline"
-                size="sm"
-                className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
-              >
-                Koble til e-post
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      
       <RiskStats onRefresh={refreshData} />
       <EmailList emails={emails} onRefresh={refreshData} />
       <Toaster />

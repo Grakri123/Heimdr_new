@@ -141,23 +141,9 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
             Totalt analyserte e-poster: {totalAnalyzed}
           </p>
         </div>
-        <Button 
-          onClick={runAnalysis} 
-          disabled={isAnalyzing}
-          className="bg-bronze hover:bg-opacity-90 text-white"
-        >
-          {isAnalyzing ? (
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span className="ml-2">Analyserer...</span>
-            </div>
-          ) : (
-            'Analyser nye e-poster'
-          )}
-        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-red-100 text-red-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
           <p className="text-sm font-medium uppercase tracking-wide">Høy risiko</p>
           <p className="text-4xl font-bold mt-2">{highCount}</p>
