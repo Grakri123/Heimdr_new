@@ -7,11 +7,13 @@ import EmailList from '@/app/components/EmailList'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/toaster'
 import type { Email } from '@/types/email'
+import { AlertCircle } from 'lucide-react'
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [emails, setEmails] = useState<Email[]>([])
   const [hasGmailTokens, setHasGmailTokens] = useState(false)
+  const [hasOutlookTokens, setHasOutlookTokens] = useState(false)
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const supabase = createClientComponentClient()
 
@@ -35,7 +37,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    const checkGmailTokens = async () => {
+    const checkConnections = async () => {
       try {
         // Get current user first
         const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -49,34 +51,55 @@ export default function DashboardPage() {
           return
         }
 
-        // Check if user has Gmail tokens
-        const { data: tokenData, error: tokenError } = await supabase
+        // Check Gmail tokens
+        const { data: gmailData, error: gmailError } = await supabase
           .from('gmail_tokens')
-          .select('*')
+          .select('access_token')
           .eq('user_id', user.id)
           .single()
 
-        console.log('Token check result:', { tokenData, tokenError })
-        setDebugInfo(prev => ({ ...prev, tokenData, tokenError }))
+        console.log('Token check result:', { gmailData, gmailError })
+        setDebugInfo(prev => ({ ...prev, gmailData, gmailError }))
 
-        if (!tokenError && tokenData?.access_token) {
+        if (!gmailError && gmailData?.access_token) {
           console.log('Found valid token for user')
           setHasGmailTokens(true)
-          await refreshData()
         } else {
           console.log('No valid Gmail tokens found for user:', user.id)
           setHasGmailTokens(false)
         }
+
+        // Check Outlook tokens
+        const { data: outlookData, error: outlookError } = await supabase
+          .from('outlook_tokens')
+          .select('access_token')
+          .eq('user_id', user.id)
+          .single()
+
+        console.log('Token check result:', { outlookData, outlookError })
+        setDebugInfo(prev => ({ ...prev, outlookData, outlookError }))
+
+        if (!outlookError && outlookData?.access_token) {
+          console.log('Found valid token for user')
+          setHasOutlookTokens(true)
+        } else {
+          console.log('No valid Outlook tokens found for user:', user.id)
+          setHasOutlookTokens(false)
+        }
+
+        // Always load existing emails
+        await refreshData()
       } catch (error) {
-        console.error('Error checking Gmail tokens:', error)
+        console.error('Error checking connections:', error)
         setDebugInfo(prev => ({ ...prev, error }))
         setHasGmailTokens(false)
+        setHasOutlookTokens(false)
       } finally {
         setLoading(false)
       }
     }
 
-    checkGmailTokens()
+    checkConnections()
   }, [supabase])
 
   if (loading) {
@@ -87,36 +110,38 @@ export default function DashboardPage() {
     )
   }
 
-  if (!hasGmailTokens) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-4">Gmail ikke tilkoblet</h2>
-          <p className="text-gray-600 mb-6">
-            Du må koble til Gmail-kontoen din før du kan se og analysere e-poster.
-          </p>
-          <Button 
-            onClick={() => window.location.href = '/dashboard/integrations'}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Koble til Gmail
-          </Button>
-          {process.env.NODE_ENV === 'development' && debugInfo && (
-            <pre className="mt-8 text-left text-xs bg-gray-100 p-4 rounded">
-              Debug info:
-              {JSON.stringify(debugInfo, null, 2)}
-            </pre>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="container mx-auto py-8 space-y-8">
+      {!hasGmailTokens && !hasOutlookTokens && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 text-blue-500" />
+          <div className="flex-1">
+            <p className="text-blue-700">
+              Ingen e-posttilkobling aktiv – viser tidligere analyserte e-poster
+            </p>
+            <div className="mt-2">
+              <Button 
+                onClick={() => window.location.href = '/dashboard/integrations'}
+                variant="outline"
+                size="sm"
+                className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
+              >
+                Koble til e-post
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <RiskStats onRefresh={refreshData} />
       <EmailList emails={emails} onRefresh={refreshData} />
       <Toaster />
+      {process.env.NODE_ENV === 'development' && debugInfo && (
+        <pre className="mt-8 text-left text-xs bg-gray-100 p-4 rounded">
+          Debug info:
+          {JSON.stringify(debugInfo, null, 2)}
+        </pre>
+      )}
     </div>
   )
 } 
