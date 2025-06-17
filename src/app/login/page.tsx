@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Image from 'next/image'
 
 type AuthMode = 'login' | 'register'
 type Status = 'idle' | 'loading' | 'success' | 'error'
@@ -16,7 +17,6 @@ export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>('login')
   const [status, setStatus] = useState<Status>('idle')
   const [errorMessage, setErrorMessage] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState<FormData>({
     email: '',
     password: ''
@@ -34,193 +34,160 @@ export default function AuthPage() {
     checkUser()
   }, [router])
 
-  const validateForm = () => {
-    if (!formData.email || !formData.password) {
-      setErrorMessage('Vennligst fyll ut alle felt')
-      return false
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      })
+      if (error) throw error
+    } catch (error: any) {
+      setStatus('error')
+      setErrorMessage(error.message || 'Could not connect to Google')
     }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(formData.email)) {
-      setErrorMessage('Vennligst skriv inn en gyldig e-postadresse')
-      return false
-    }
-
-    if (formData.password.length < 6) {
-      setErrorMessage('Passordet må være minst 6 tegn')
-      return false
-    }
-
-    return true
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validateForm()) {
+  const handleMicrosoftLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      })
+      if (error) throw error
+    } catch (error: any) {
       setStatus('error')
-      return
+      setErrorMessage(error.message || 'Could not connect to Microsoft')
     }
+  }
 
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
     setStatus('loading')
     setErrorMessage('')
 
     try {
-      if (mode === 'register') {
-        const { error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`
-          }
-        })
-        
-        if (error) {
-          console.error('Feil ved registrering:', error)
-          throw error
-        }
-        
-        setStatus('success')
-        setErrorMessage('Bruker opprettet! Sjekk e-posten din for bekreftelse.')
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password
-        })
-        
-        if (error) {
-          console.error('Feil ved innlogging:', error)
-          throw error
-        }
-        
-        router.push('/dashboard')
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password
+      })
+      
+      if (error) throw error
+      router.push('/dashboard')
     } catch (error: any) {
       setStatus('error')
-      setErrorMessage(
-        mode === 'register'
-          ? error.message || 'Kunne ikke opprette bruker. Prøv igjen senere.'
-          : error.message || 'Feil e-post eller passord.'
-      )
-    }
-  }
-
-  const toggleMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login')
-    setStatus('idle')
-    setErrorMessage('')
-  }
-
-  const getStatusMessage = () => {
-    switch (status) {
-      case 'loading':
-        return <p className="text-steel-blue">Behandler forespørsel...</p>
-      case 'success':
-        return <p className="text-success-green">{errorMessage}</p>
-      case 'error':
-        return <p className="text-muted-red">{errorMessage}</p>
-      default:
-        return null
+      setErrorMessage('Feil e-post eller passord.')
     }
   }
 
   return (
-    <div className="min-h-screen bg-ivory flex items-center justify-center px-4">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-bronze mb-2">
-            Velkommen til HEIMDR
-          </h1>
-          <p className="text-charcoal text-lg">
-            {mode === 'login' 
-              ? 'Logg inn for å fortsette'
-              : 'Opprett en konto for å komme i gang'}
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label 
-                htmlFor="email" 
-                className="block text-sm font-medium text-charcoal mb-2"
-              >
-                E-postadresse
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-charcoal focus:outline-none focus:ring-bronze focus:border-bronze focus:z-10 sm:text-sm"
-                placeholder="din@epost.no"
+    <div className="min-h-screen bg-[#181818] flex">
+      {/* Left Column - Login Section */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+        <div className="w-full max-w-md bg-[#212121] p-8 rounded-lg">
+          <div className="flex justify-center mb-8">
+            {/* Replace with actual logo path once available */}
+            <div className="w-32 h-32 relative">
+              <Image
+                src="/logo.svg"
+                alt="HEIMDR"
+                layout="fill"
+                className="object-contain"
               />
             </div>
+          </div>
 
-            <div>
-              <label 
-                htmlFor="password" 
-                className="block text-sm font-medium text-charcoal mb-2"
-              >
-                Passord
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  className="appearance-none rounded-lg relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-charcoal focus:outline-none focus:ring-bronze focus:border-bronze focus:z-10 sm:text-sm"
-                  placeholder={mode === 'login' ? 'Ditt passord' : 'Velg et passord (minst 6 tegn)'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-charcoal focus:outline-none focus:text-charcoal"
-                  aria-label={showPassword ? 'Skjul passord' : 'Vis passord'}
-                >
-                  {showPassword ? '🙈' : '👁️'}
-                </button>
+          <div className="space-y-4">
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full bg-white text-gray-800 font-medium py-3 px-4 rounded flex items-center justify-center space-x-2 hover:bg-gray-100 transition-colors"
+            >
+              <span>GOOGLE</span>
+            </button>
+
+            <button
+              onClick={handleMicrosoftLogin}
+              className="w-full bg-white text-gray-800 font-medium py-3 px-4 rounded flex items-center justify-center space-x-2 hover:bg-gray-100 transition-colors"
+            >
+              <span>MICROSOFT</span>
+            </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-[#212121] text-gray-400">eller</span>
               </div>
             </div>
-          </div>
 
-          <div>
+            <form onSubmit={handleEmailLogin} className="space-y-4">
+              <input
+                type="email"
+                placeholder="Epost adresse"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full bg-[#181818] text-white px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-[#b06f30]"
+              />
+              
+              <input
+                type="password"
+                placeholder="Passord"
+                value={formData.password}
+                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                className="w-full bg-[#181818] text-white px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-[#b06f30]"
+              />
+
+              <div className="text-right">
+                <a href="#" className="text-sm text-gray-400 hover:text-white">
+                  Glemt passord?
+                </a>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#b06f30] text-white font-medium py-3 px-4 rounded hover:bg-[#95602a] transition-colors"
+              >
+                Logg inn
+              </button>
+            </form>
+
             <button
-              type="submit"
-              disabled={status === 'loading'}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-bronze hover:bg-bronze/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bronze disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              onClick={() => setMode('register')}
+              className="w-full border border-[#b06f30] text-[#b06f30] font-medium py-3 px-4 rounded hover:bg-[#b06f30] hover:text-white transition-colors"
             >
-              {status === 'loading' 
-                ? 'Behandler...' 
-                : mode === 'login' 
-                  ? 'Logg inn' 
-                  : 'Opprett konto'}
+              Registrer deg
             </button>
           </div>
+        </div>
+      </div>
 
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="text-steel-blue hover:text-steel-blue/80 text-sm font-medium focus:outline-none"
-            >
-              {mode === 'login' 
-                ? 'Ny bruker? Opprett konto her' 
-                : 'Har du allerede en konto? Logg inn her'}
-            </button>
+      {/* Right Column - Testimonial Section */}
+      <div className="hidden lg:flex w-1/2 bg-[#181818] flex-col items-center justify-center p-8">
+        <div className="max-w-xl">
+          <h2 className="text-2xl text-white font-medium mb-8 text-center">
+            Hør hva våre brukere sier om oss
+          </h2>
+
+          <div className="bg-[#212121] p-8 rounded-lg mb-8">
+            <p className="text-white text-lg mb-4">
+              "For en enkel og trygg måte å holde inboxen sikker for angrep på"
+            </p>
+            <p className="text-[#b06f30]">-Fornøyd kunde</p>
           </div>
 
-          <div className="text-center text-sm mt-4">
-            {getStatusMessage()}
+          <div className="flex justify-center space-x-2">
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                className={`w-2 h-2 rounded-full ${i === 0 ? 'bg-[#b06f30]' : 'bg-[#b06f30]/30'}`}
+              />
+            ))}
           </div>
-        </form>
+        </div>
       </div>
     </div>
   )
