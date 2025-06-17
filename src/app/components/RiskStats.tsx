@@ -136,42 +136,42 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-800">Risikostatistikk</h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <h2 className="text-2xl font-semibold text-white">Risikostatistikk</h2>
+          <p className="text-sm text-gray-400 mt-1">
             Totalt analyserte e-poster: {totalAnalyzed}
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-red-100 text-red-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
-          <p className="text-sm font-medium uppercase tracking-wide">Høy risiko</p>
-          <p className="text-4xl font-bold mt-2">{highCount}</p>
+        <div className="bg-[#181818] p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
+          <p className="text-sm font-medium uppercase tracking-wide text-red-400">Høy risiko</p>
+          <p className="text-4xl font-bold mt-2 text-red-500">{highCount}</p>
           <div className="mt-2 text-sm">
-            <p className="text-red-600 font-medium">{percentHigh}% av totalen</p>
-            <p className="text-red-700">Krever umiddelbar oppmerksomhet</p>
+            <p className="text-red-400 font-medium">{percentHigh}% av totalen</p>
+            <p className="text-red-300">Krever umiddelbar oppmerksomhet</p>
           </div>
         </div>
-        <div className="bg-yellow-100 text-yellow-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
-          <p className="text-sm font-medium uppercase tracking-wide">Medium risiko</p>
-          <p className="text-4xl font-bold mt-2">{mediumCount}</p>
+        <div className="bg-[#181818] p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
+          <p className="text-sm font-medium uppercase tracking-wide text-yellow-400">Medium risiko</p>
+          <p className="text-4xl font-bold mt-2 text-yellow-500">{mediumCount}</p>
           <div className="mt-2 text-sm">
-            <p className="text-yellow-600 font-medium">{percentMedium}% av totalen</p>
-            <p className="text-yellow-700">Bør undersøkes nærmere</p>
+            <p className="text-yellow-400 font-medium">{percentMedium}% av totalen</p>
+            <p className="text-yellow-300">Bør undersøkes nærmere</p>
           </div>
         </div>
-        <div className="bg-green-100 text-green-800 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
-          <p className="text-sm font-medium uppercase tracking-wide">Lav risiko</p>
-          <p className="text-4xl font-bold mt-2">{lowCount}</p>
+        <div className="bg-[#181818] p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 text-center">
+          <p className="text-sm font-medium uppercase tracking-wide text-green-400">Lav risiko</p>
+          <p className="text-4xl font-bold mt-2 text-green-500">{lowCount}</p>
           <div className="mt-2 text-sm">
-            <p className="text-green-600 font-medium">{percentLow}% av totalen</p>
-            <p className="text-green-700">Ingen umiddelbar risiko</p>
+            <p className="text-green-400 font-medium">{percentLow}% av totalen</p>
+            <p className="text-green-300">Ingen umiddelbar risiko</p>
           </div>
         </div>
       </div>
 
       {emails.length > totalAnalyzed && (
-        <div className="mt-4 text-center text-sm text-gray-600">
+        <div className="mt-4 text-center text-sm text-gray-400">
           Merk: {emails.length - totalAnalyzed} e-post(er) venter på analyse
         </div>
       )}

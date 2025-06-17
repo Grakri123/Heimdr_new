@@ -149,22 +149,22 @@ export function EmailList() {
         </div>
       ) : emails.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-steel-blue">Ingen e-poster funnet</p>
+          <p className="text-gray-400">Ingen e-poster funnet</p>
         </div>
       ) : (
         <div className="grid gap-4">
           {emails.map((email) => (
             <div
               key={email.id}
-              className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
+              className="bg-[#181818] rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
             >
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <h3 className="font-medium text-charcoal">{email.subject}</h3>
-                  <p className="text-sm text-steel-blue">{email.from_address}</p>
+                  <h3 className="font-medium text-white">{email.subject}</h3>
+                  <p className="text-sm text-gray-400">{email.from_address}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <span className="text-sm text-steel-blue">
+                  <span className="text-sm text-gray-400">
                     {new Date(email.date).toLocaleDateString('nb-NO', {
                       year: 'numeric',
                       month: 'long',
@@ -179,7 +179,7 @@ export function EmailList() {
                 </div>
               </div>
               {email.ai_reason && (
-                <p className="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                <p className="mt-2 text-sm text-gray-400 bg-[#212121] p-2 rounded">
                   {email.ai_reason}
                 </p>
               )}
