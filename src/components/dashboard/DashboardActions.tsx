@@ -102,39 +102,8 @@ export function DashboardActions() {
     }
   }
 
-  const handleGmailConnect = async () => {
-    try {
-      setIsConnecting(true)
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/api/auth/callback`,
-          scopes: 'https://www.googleapis.com/auth/gmail.readonly',
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent'
-          }
-        }
-      })
-      
-      if (error) {
-        console.error('OAuth error:', error)
-        toast({
-          title: 'Tilkoblingsfeil',
-          description: 'Kunne ikke koble til Gmail. Prøv igjen senere.',
-          variant: 'destructive'
-        })
-      }
-    } catch (error) {
-      console.error('Error connecting to Gmail:', error)
-      toast({
-        title: 'Uventet feil',
-        description: 'Det oppstod en feil ved tilkobling til Gmail.',
-        variant: 'destructive'
-      })
-    } finally {
-      setIsConnecting(false)
-    }
+  const handleGmailConnect = () => {
+    window.location.href = '/api/auth/gmail/login'
   }
 
   const handleGmailDisconnect = async () => {
