@@ -16,9 +16,16 @@ export default function RiskStats({ onRefresh }: RiskStatsProps) {
 
   const fetchEmails = async () => {
     try {
+      // Hent innlogget bruker først
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        throw userError || new Error('Ingen bruker funnet')
+      }
+      // Hent kun e-poster for denne brukeren
       const { data, error } = await supabase
         .from('emails')
         .select('*')
+        .eq('user_id', user.id)
         .not('analyzed_at', 'is', null)
 
       if (error) {
