@@ -1,6 +1,8 @@
 -- Create outlook_tokens table
 create table if not exists public.outlook_tokens (
-  user_id uuid references auth.users(id) on delete cascade not null primary key,
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  email text not null,
   access_token text not null,
   refresh_token text,
   expires_at timestamp with time zone,

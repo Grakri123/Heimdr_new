@@ -2,11 +2,11 @@
 create table if not exists public.gmail_tokens (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references auth.users(id) on delete cascade not null,
+    email text not null,
     access_token text not null,
     refresh_token text,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    unique(user_id)
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- Enable RLS

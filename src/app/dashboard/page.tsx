@@ -134,6 +134,7 @@ function UserConnectionsGrid() {
   const [connections, setConnections] = useState<{
     provider: 'gmail' | 'outlook',
     email: string
+    id: string
   }[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -147,13 +148,22 @@ function UserConnectionsGrid() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
-        const [{ data: gmail }, { data: outlook }] = await Promise.all([
-          supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle(),
-          supabase.from('outlook_tokens').select('email').eq('user_id', user.id).maybeSingle(),
+        // Hent ALLE Gmail og Outlook-kontoer for brukeren
+        const [{ data: gmails }, { data: outlooks }] = await Promise.all([
+          supabase.from('gmail_tokens').select('id, email').eq('user_id', user.id),
+          supabase.from('outlook_tokens').select('id, email').eq('user_id', user.id),
         ])
-        const newConnections = []
-        if (gmail && gmail.email) newConnections.push({ provider: 'gmail', email: gmail.email })
-        if (outlook && outlook.email) newConnections.push({ provider: 'outlook', email: outlook.email })
+        const newConnections: { provider: 'gmail' | 'outlook', email: string, id: string }[] = []
+        if (Array.isArray(gmails)) {
+          for (const g of gmails) {
+            if (g.email) newConnections.push({ provider: 'gmail', email: g.email, id: g.id })
+          }
+        }
+        if (Array.isArray(outlooks)) {
+          for (const o of outlooks) {
+            if (o.email) newConnections.push({ provider: 'outlook', email: o.email, id: o.id })
+          }
+        }
         setConnections(newConnections)
       } catch (e) {
         toast({ title: 'Feil', description: 'Kunne ikke hente tilkoblinger', variant: 'destructive' })
@@ -186,33 +196,53 @@ function UserConnectionsGrid() {
     )
   }
 
-  // Render grid
+  // Grid med 3 kolonner per rad, dynamisk antall rader
+  const gridItems = [...connections.map((conn) => ({ type: 'user', ...conn })), { type: 'add' }]
+  const rows = []
+  for (let i = 0; i < gridItems.length; i += 3) {
+    rows.push(gridItems.slice(i, i + 3))
+  }
+
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
-        {/* Vis tilkoblede brukere */}
-        {connections.map((conn, idx) => (
-          <div key={conn.provider} className="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-green-400">
-            <CheckCircle className="text-green-500 mb-2" size={32} />
-            <Mail className="text-gray-500 mb-1" size={20} />
-            <span className="font-semibold text-gray-800 mb-1">{conn.email}</span>
-            <span className="text-xs text-green-600 font-medium">Tilkoblet ({conn.provider === 'gmail' ? 'Google' : 'Microsoft'})</span>
-          </div>
-        ))}
-        {/* Alltid én boks for 'Koble til ny bruker' hvis det er plass */}
-        {connections.length < 3 && (
-          <button
-            className="bg-[#181818] hover:bg-[#232323] text-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-dashed border-bronze transition-colors"
-            onClick={() => setModalOpen(true)}
-          >
-            <PlusCircle className="text-bronze mb-2" size={32} />
-            <span className="font-semibold">Koble til ny bruker</span>
-          </button>
-        )}
-        {/* Fyll ut grid med tomme bokser hvis mindre enn 3 */}
-        {Array.from({ length: 3 - (connections.length + 1) }).map((_, idx) => (
-          <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
-            <span className="text-gray-400">Tom plass</span>
+      <div className="flex flex-col gap-6 max-w-4xl mx-auto mb-8">
+        {rows.map((row, rowIdx) => (
+          <div key={rowIdx} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {row.map((item, idx) => {
+              if (item.type === 'user') {
+                return (
+                  <div key={item.id} className="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-green-400">
+                    <CheckCircle className="text-green-500 mb-2" size={32} />
+                    <Mail className="text-gray-500 mb-1" size={20} />
+                    <span className="font-semibold text-gray-800 mb-1">{item.email}</span>
+                    <span className="text-xs text-green-600 font-medium">Tilkoblet ({item.provider === 'gmail' ? 'Google' : 'Microsoft'})</span>
+                  </div>
+                )
+              } else if (item.type === 'add') {
+                return (
+                  <button
+                    key="add-user"
+                    className="bg-[#181818] hover:bg-[#232323] text-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-dashed border-bronze transition-colors"
+                    onClick={() => setModalOpen(true)}
+                  >
+                    <PlusCircle className="text-bronze mb-2" size={32} />
+                    <span className="font-semibold">Koble til ny bruker</span>
+                  </button>
+                )
+              } else {
+                return (
+                  <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
+                    <span className="text-gray-400">Tom plass</span>
+                  </div>
+                )
+              }
+            })}
+            {/* Fyll ut rad med tomme bokser hvis mindre enn 3 */}
+            {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, idx) => (
+              <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
+                <span className="text-gray-400">Tom plass</span>
+              </div>
+            ))}
           </div>
         ))}
       </div>
