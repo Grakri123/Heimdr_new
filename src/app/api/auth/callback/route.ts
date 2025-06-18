@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   if (!code) {
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=no_code`)
+    return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=no_code`)
   }
 
   // Hent code_verifier fra cookie
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   console.log('code_verifier from cookie:', codeVerifier)
   if (!codeVerifier) {
     console.error('Missing code_verifier in callback cookies!')
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=missing_code_verifier`)
+    return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=missing_code_verifier`)
   }
 
   // Hent session for å finne user_id
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession()
   if (sessionError || !session?.user?.id) {
     console.error('No supabase session or user id:', sessionError)
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=no_user`)
+    return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=no_user`)
   }
   const userId = session.user.id
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   if (!tokenData.access_token) {
     console.error('No access_token from Google:', tokenData)
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=no_access_token`)
+    return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=no_access_token`)
   }
 
   // Hent e-postadressen til brukeren fra Google
@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
     })
   if (upsertError) {
     console.error('Token storage error:', upsertError)
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=token_store_error`)
+    return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=token_store_error`)
   }
   console.log('Gmail tokens upserted successfully!')
-  return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?success=true`)
+  return NextResponse.redirect(`${requestUrl.origin}/dashboard?success=true`)
 } 

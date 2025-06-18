@@ -74,5 +74,5 @@ export async function GET(req: NextRequest) {
   }
 
   // Redirect back to the app
-  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/integrations?success=true`)
+  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`)
 } 
