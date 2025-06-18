@@ -138,39 +138,41 @@ function UserConnectionsGrid() {
   }[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
 
-  useEffect(() => {
-    const fetchConnections = async () => {
-      setLoading(true)
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-        // Hent ALLE Gmail og Outlook-kontoer for brukeren
-        const [{ data: gmails }, { data: outlooks }] = await Promise.all([
-          supabase.from('gmail_tokens').select('id, email').eq('user_id', user.id),
-          supabase.from('outlook_tokens').select('id, email').eq('user_id', user.id),
-        ])
-        const newConnections: { provider: 'gmail' | 'outlook', email: string, id: string }[] = []
-        if (Array.isArray(gmails)) {
-          for (const g of gmails) {
-            if (g.email) newConnections.push({ provider: 'gmail', email: g.email, id: g.id })
-          }
+  // Hent alle tokens for brukeren
+  const fetchConnections = async () => {
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const [{ data: gmails }, { data: outlooks }] = await Promise.all([
+        supabase.from('gmail_tokens').select('id, email').eq('user_id', user.id),
+        supabase.from('outlook_tokens').select('id, email').eq('user_id', user.id),
+      ])
+      const newConnections: { provider: 'gmail' | 'outlook', email: string, id: string }[] = []
+      if (Array.isArray(gmails)) {
+        for (const g of gmails) {
+          if (g.email) newConnections.push({ provider: 'gmail', email: g.email, id: g.id })
         }
-        if (Array.isArray(outlooks)) {
-          for (const o of outlooks) {
-            if (o.email) newConnections.push({ provider: 'outlook', email: o.email, id: o.id })
-          }
-        }
-        setConnections(newConnections)
-      } catch (e) {
-        toast({ title: 'Feil', description: 'Kunne ikke hente tilkoblinger', variant: 'destructive' })
-      } finally {
-        setLoading(false)
       }
+      if (Array.isArray(outlooks)) {
+        for (const o of outlooks) {
+          if (o.email) newConnections.push({ provider: 'outlook', email: o.email, id: o.id })
+        }
+      }
+      setConnections(newConnections)
+    } catch (e) {
+      toast({ title: 'Feil', description: 'Kunne ikke hente tilkoblinger', variant: 'destructive' })
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchConnections()
   }, [])
 
@@ -180,6 +182,22 @@ function UserConnectionsGrid() {
       window.location.href = '/api/auth/gmail/login'
     } else {
       window.location.href = '/api/auth/outlook/login'
+    }
+  }
+
+  // Handler for å koble fra en konto
+  const handleDisconnect = async (provider: 'gmail' | 'outlook', id: string) => {
+    setDisconnectingId(id)
+    try {
+      const table = provider === 'gmail' ? 'gmail_tokens' : 'outlook_tokens'
+      const { error } = await supabase.from(table).delete().eq('id', id)
+      if (error) throw error
+      toast({ title: 'Koblet fra', description: 'Kontoen er koblet fra.', variant: 'default' })
+      await fetchConnections()
+    } catch (e) {
+      toast({ title: 'Feil', description: 'Kunne ikke koble fra konto.', variant: 'destructive' })
+    } finally {
+      setDisconnectingId(null)
     }
   }
 
@@ -215,7 +233,14 @@ function UserConnectionsGrid() {
                     <CheckCircle className="text-green-500 mb-2" size={32} />
                     <Mail className="text-gray-500 mb-1" size={20} />
                     <span className="font-semibold text-gray-800 mb-1">{item.email}</span>
-                    <span className="text-xs text-green-600 font-medium">Tilkoblet ({item.provider === 'gmail' ? 'Google' : 'Microsoft'})</span>
+                    <span className="text-xs text-green-600 font-medium mb-4">Tilkoblet ({item.provider === 'gmail' ? 'Google' : 'Microsoft'})</span>
+                    <Button
+                      onClick={() => handleDisconnect(item.provider, item.id)}
+                      className="w-full bg-muted-red hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg mt-2"
+                      disabled={disconnectingId === item.id}
+                    >
+                      {disconnectingId === item.id ? 'Kobler fra...' : 'Koble fra'}
+                    </Button>
                   </div>
                 )
               } else if (item.type === 'add') {
