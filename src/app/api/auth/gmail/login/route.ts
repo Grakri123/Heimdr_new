@@ -32,9 +32,6 @@ export async function GET(request: NextRequest) {
   const verifier = base64URLEncode(randomBytes(32))
   const challenge = base64URLEncode(sha256(Buffer.from(verifier)))
 
-  // Store verifier in cookie for later use
-  // (Merk: NextResponse støtter cookies direkte)
-
   // Set up OAuth parameters
   const params = new URLSearchParams({
     client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
@@ -50,6 +47,14 @@ export async function GET(request: NextRequest) {
   // Build the Google OAuth URL
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
 
-  // Bruk NextResponse.redirect for å sende brukeren videre
-  return NextResponse.redirect(authUrl)
+  // Sett code_verifier i cookie og redirect
+  const response = NextResponse.redirect(authUrl)
+  response.cookies.set('code_verifier', verifier, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    maxAge: 600
+  })
+  return response
 } 
