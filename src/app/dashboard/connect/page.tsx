@@ -31,7 +31,7 @@ export default function ConnectPage() {
               onClick={() => handleConnect('gmail')}
               className="bg-white rounded-lg shadow-md px-8 py-4 flex items-center justify-center w-full max-w-xs hover:scale-105 transition-transform mb-4"
             >
-              <img src="/google.svg" alt="Google" className="h-10 w-auto" />
+              <img src="/google.png" alt="Google" className="h-10 w-auto" />
             </button>
           </div>
           <span className="text-white text-lg">eller</span>
@@ -41,7 +41,7 @@ export default function ConnectPage() {
               onClick={() => handleConnect('outlook')}
               className="bg-white rounded-lg shadow-md px-8 py-4 flex items-center justify-center w-full max-w-xs hover:scale-105 transition-transform"
             >
-              <img src="/microsoft.svg" alt="Microsoft" className="h-10 w-auto" />
+              <img src="/microsoft.png" alt="Microsoft" className="h-10 w-auto" />
             </button>
           </div>
         </div>

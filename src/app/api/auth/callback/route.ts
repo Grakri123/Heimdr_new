@@ -79,5 +79,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=token_store_error`)
   }
   console.log('Gmail tokens inserted successfully!')
-  return NextResponse.redirect(`${requestUrl.origin}/dashboard?success=true`)
+  return NextResponse.redirect(`${requestUrl.origin}/dashboard/connect/success`)
 } 

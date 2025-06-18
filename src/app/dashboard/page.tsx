@@ -178,7 +178,15 @@ function UserConnectionsGrid() {
 
   // Handler for å åpne tilkoblingsside
   const handleConnectPage = () => {
-    router.push('/dashboard/connect')
+    const width = 480;
+    const height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    window.open(
+      '/dashboard/connect',
+      'heimdr-connect',
+      `width=${width},height=${height},left=${left},top=${top},resizable,scrollbars=yes,status=0,toolbar=0,menubar=0`
+    );
   }
 
   // Handler for å koble fra en konto
