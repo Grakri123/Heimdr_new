@@ -7,12 +7,10 @@ export default function ConnectSuccessPage() {
     if (window.opener) {
       window.opener.postMessage({ type: "heimdr-connected" }, "*");
     }
-    // Redirect til dashboard etter 2 sekunder
+    // Lukk popupen etter 0.7 sekunder
     const timer = setTimeout(() => {
-      if (window.opener) {
-        window.location.href = "/dashboard";
-      }
-    }, 2000);
+      window.close();
+    }, 700);
     return () => clearTimeout(timer);
   }, []);
 
