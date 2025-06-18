@@ -48,13 +48,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${requestUrl.origin}/dashboard/integrations?error=no_access_token`)
   }
 
-  // Lagre tokens i gmail_tokens
+  // Hent e-postadressen til brukeren fra Google
+  let gmailEmail = null
+  try {
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`
+      }
+    })
+    const userInfo = await userInfoRes.json()
+    gmailEmail = userInfo.email || null
+    console.log('Fetched Gmail user email:', gmailEmail)
+  } catch (err) {
+    console.error('Failed to fetch Gmail user email:', err)
+  }
+
+  // Lagre tokens og e-post i gmail_tokens
   const { error: upsertError } = await supabase
     .from('gmail_tokens')
     .upsert({
       user_id: userId,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token || '',
+      email: gmailEmail,
       updated_at: new Date().toISOString(),
       expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString() : null
     }, {
