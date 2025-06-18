@@ -64,22 +64,20 @@ export async function GET(request: NextRequest) {
   }
 
   // Lagre tokens og e-post i gmail_tokens
-  const { error: upsertError } = await supabase
+  const { error: insertError } = await supabase
     .from('gmail_tokens')
-    .upsert({
+    .insert({
       user_id: userId,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token || '',
       email: gmailEmail,
       updated_at: new Date().toISOString(),
       expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString() : null
-    }, {
-      onConflict: 'user_id'
     })
-  if (upsertError) {
-    console.error('Token storage error:', upsertError)
+  if (insertError) {
+    console.error('Token storage error:', insertError)
     return NextResponse.redirect(`${requestUrl.origin}/dashboard?error=token_store_error`)
   }
-  console.log('Gmail tokens upserted successfully!')
+  console.log('Gmail tokens inserted successfully!')
   return NextResponse.redirect(`${requestUrl.origin}/dashboard?success=true`)
 } 

@@ -55,21 +55,19 @@ export async function GET(req: NextRequest) {
   }
 
   // Store the tokens
-  const { error: upsertError } = await supabase
+  const { error: insertError } = await supabase
     .from('outlook_tokens')
-    .upsert({
+    .insert({
       user_id: session.user.id,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,
       expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
       email: userEmail,
       updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'user_id'
     })
 
-  if (upsertError) {
-    console.error('Failed to store token:', upsertError)
+  if (insertError) {
+    console.error('Failed to store token:', insertError)
     return NextResponse.json({ error: 'Failed to store token' }, { status: 500 })
   }
 
