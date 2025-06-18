@@ -43,7 +43,7 @@ export function DashboardActions() {
       // Check Gmail tokens
       const { data: gmailTokenData, error: gmailTokenError } = await supabase
         .from('gmail_tokens')
-        .select('access_token')
+        .select('access_token, email')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -60,11 +60,13 @@ export function DashboardActions() {
         const isGmailConnected = !!gmailTokenData
         setIsGoogleConnected(isGmailConnected)
 
-        if (isGmailConnected && user) {
+        if (isGmailConnected) {
           setUserInfo({
-            fullName: user.user_metadata.full_name || 'Ukjent navn',
-            email: user.email || 'Ingen e-post tilgjengelig'
+            fullName: 'Ukjent navn',
+            email: gmailTokenData.email || 'Ingen e-post tilgjengelig'
           })
+        } else {
+          setUserInfo(null)
         }
       }
 
@@ -116,20 +118,14 @@ export function DashboardActions() {
           .from('gmail_tokens')
           .delete()
           .eq('user_id', user.id)
-        
         if (deleteError) throw deleteError
       }
-
-      // Then sign out
-      const { error: signOutError } = await supabase.auth.signOut()
-      if (signOutError) throw signOutError
-      
       toast({
-        title: 'Logget ut',
+        title: 'Frakoblet',
         description: 'Du har blitt koblet fra Gmail.',
       })
-      
-      router.push('/login')
+      setIsGoogleConnected(false)
+      setUserInfo(null)
     } catch (error) {
       console.error('Error disconnecting from Gmail:', error)
       toast({
