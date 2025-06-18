@@ -255,19 +255,10 @@ function UserConnectionsGrid() {
                   </button>
                 )
               } else {
-                return (
-                  <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
-                    <span className="text-gray-400">Tom plass</span>
-                  </div>
-                )
+                return null
               }
             })}
-            {/* Fyll ut rad med tomme bokser hvis mindre enn 3 */}
-            {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, idx) => (
-              <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
-                <span className="text-gray-400">Tom plass</span>
-              </div>
-            ))}
+            {/* Ikke vis tomme bokser */}
           </div>
         ))}
       </div>
