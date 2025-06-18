@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createHash, randomBytes } from 'crypto'
 
 function base64URLEncode(buffer: Buffer): string {
@@ -33,12 +33,7 @@ export async function GET(request: NextRequest) {
   const challenge = base64URLEncode(sha256(Buffer.from(verifier)))
 
   // Store verifier in cookie for later use
-  const cookieStore = request.cookies
-  const response = new Response()
-  response.headers.set(
-    'Set-Cookie',
-    `code_verifier=${verifier}; Path=/; HttpOnly; SameSite=Lax; Secure`
-  )
+  // (Merk: NextResponse støtter cookies direkte)
 
   // Set up OAuth parameters
   const params = new URLSearchParams({
@@ -54,8 +49,7 @@ export async function GET(request: NextRequest) {
 
   // Build the Google OAuth URL
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  
-  // Set the redirect URL in the response
-  response.headers.set('Location', authUrl)
-  return response
+
+  // Bruk NextResponse.redirect for å sende brukeren videre
+  return NextResponse.redirect(authUrl)
 } 
