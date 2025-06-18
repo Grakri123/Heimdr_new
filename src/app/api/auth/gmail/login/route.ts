@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
     redirect_uri: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/callback`,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email',
     access_type: 'offline',
     prompt: 'consent',
     code_challenge: challenge,
