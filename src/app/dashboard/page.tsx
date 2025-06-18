@@ -11,6 +11,7 @@ import { AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { createClient } from '@/lib/supabase/client'
+import { CheckCircle, PlusCircle, Mail } from 'lucide-react'
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -116,7 +117,7 @@ export default function DashboardPage() {
   return (
     <div className="container mx-auto py-8 space-y-8">
       <RiskStats onRefresh={refreshData} />
-      <ConnectionBoxes />
+      <UserConnectionsGrid />
       <EmailList emails={emails} onRefresh={refreshData} />
       <Toaster />
       {process.env.NODE_ENV === 'development' && debugInfo && (
@@ -129,233 +130,106 @@ export default function DashboardPage() {
   )
 }
 
-function ConnectionBoxes() {
+function UserConnectionsGrid() {
+  const [connections, setConnections] = useState<{
+    provider: 'gmail' | 'outlook',
+    email: string
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [modalOpen, setModalOpen] = useState(false)
+  const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false)
-  const [isOutlookConnected, setIsOutlookConnected] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [userInfo, setUserInfo] = useState<{ fullName: string; email: string } | null>(null)
-  const [outlookEmail, setOutlookEmail] = useState<string | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
-    checkConnections()
+    const fetchConnections = async () => {
+      setLoading(true)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const [{ data: gmail }, { data: outlook }] = await Promise.all([
+          supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle(),
+          supabase.from('outlook_tokens').select('email').eq('user_id', user.id).maybeSingle(),
+        ])
+        const newConnections = []
+        if (gmail && gmail.email) newConnections.push({ provider: 'gmail', email: gmail.email })
+        if (outlook && outlook.email) newConnections.push({ provider: 'outlook', email: outlook.email })
+        setConnections(newConnections)
+      } catch (e) {
+        toast({ title: 'Feil', description: 'Kunne ikke hente tilkoblinger', variant: 'destructive' })
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchConnections()
   }, [])
 
-  const checkConnections = async () => {
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser()
-      if (error) {
-        console.error('Auth error:', error)
-        toast({
-          title: 'Autentiseringsfeil',
-          description: 'Kunne ikke hente brukerinformasjon. Vennligst logg inn på nytt.',
-          variant: 'destructive'
-        })
-        router.push('/login')
-        return
-      }
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      // Check Gmail tokens
-      const { data: gmailTokenData, error: gmailTokenError } = await supabase
-        .from('gmail_tokens')
-        .select('access_token, email')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (gmailTokenError) {
-        console.error('Gmail token error:', gmailTokenError)
-        toast({
-          title: 'Feil ved sjekk av Gmail-tilkobling',
-          description: 'Kunne ikke verifisere Gmail-tilkoblingen. Prøv å koble til på nytt.',
-          variant: 'destructive'
-        })
-        setIsGoogleConnected(false)
-        setUserInfo(null)
-      } else {
-        const isGmailConnected = !!gmailTokenData
-        setIsGoogleConnected(isGmailConnected)
-        if (isGmailConnected) {
-          setUserInfo({
-            fullName: 'Ukjent navn',
-            email: gmailTokenData.email || 'Ingen e-post tilgjengelig'
-          })
-        } else {
-          setUserInfo(null)
-        }
-      }
-      // Check Outlook tokens
-      const { data: outlookTokenData, error: outlookTokenError } = await supabase
-        .from('outlook_tokens')
-        .select('access_token, email')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (outlookTokenError) {
-        console.error('Outlook token error:', outlookTokenError)
-        toast({
-          title: 'Feil ved sjekk av Outlook-tilkobling',
-          description: 'Kunne ikke verifisere Outlook-tilkoblingen. Prøv å koble til på nytt.',
-          variant: 'destructive'
-        })
-        setIsOutlookConnected(false)
-        setOutlookEmail(null)
-      } else {
-        setIsOutlookConnected(!!outlookTokenData)
-        setOutlookEmail(outlookTokenData?.email || null)
-      }
-    } catch (error) {
-      console.error('Error checking connections:', error)
-      toast({
-        title: 'Uventet feil',
-        description: 'Det oppstod en feil ved sjekk av tilkoblinger.',
-        variant: 'destructive'
-      })
-      setUserInfo(null)
-      setOutlookEmail(null)
-    } finally {
-      setIsLoading(false)
+  // Handler for å åpne OAuth
+  const handleConnect = (provider: 'gmail' | 'outlook') => {
+    if (provider === 'gmail') {
+      window.location.href = '/api/auth/gmail/login'
+    } else {
+      window.location.href = '/api/auth/outlook/login'
     }
   }
 
-  const handleGmailConnect = () => {
-    window.location.href = '/api/auth/gmail/login'
-  }
-
-  const handleGmailDisconnect = async () => {
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError) throw userError
-      if (user) {
-        const { error: deleteError } = await supabase
-          .from('gmail_tokens')
-          .delete()
-          .eq('user_id', user.id)
-        if (deleteError) throw deleteError
-      }
-      toast({
-        title: 'Frakoblet',
-        description: 'Du har blitt koblet fra Gmail.',
-      })
-      setIsGoogleConnected(false)
-      setUserInfo(null)
-    } catch (error) {
-      console.error('Error disconnecting from Gmail:', error)
-      toast({
-        title: 'Feil ved frakobling',
-        description: 'Kunne ikke koble fra Gmail. Prøv igjen senere.',
-        variant: 'destructive'
-      })
-    }
-  }
-
-  const handleOutlookConnect = () => {
-    window.location.href = '/api/auth/outlook/login'
-  }
-
-  const handleOutlookDisconnect = async () => {
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError) throw userError
-      if (user) {
-        const { error: deleteError } = await supabase
-          .from('outlook_tokens')
-          .delete()
-          .eq('user_id', user.id)
-        if (deleteError) throw deleteError
-      }
-      toast({
-        title: 'Frakoblet',
-        description: 'Du har blitt koblet fra Outlook.',
-      })
-      setIsOutlookConnected(false)
-    } catch (error) {
-      console.error('Error disconnecting from Outlook:', error)
-      toast({
-        title: 'Feil ved frakobling',
-        description: 'Kunne ikke koble fra Outlook. Prøv igjen senere.',
-        variant: 'destructive'
-      })
-    }
-  }
-
-  if (isLoading) {
+  // Enkel modal-komponent
+  function Modal({ open, onClose, children }: { open: boolean, onClose: () => void, children: React.ReactNode }) {
+    if (!open) return null
     return (
-      <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-6 mb-8">
-        <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-bronze"></div>
-          <p className="ml-3 text-steel-blue">Laster...</p>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full relative">
+          <button onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+          {children}
         </div>
       </div>
     )
   }
 
+  // Render grid
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-      {/* Gmail Box */}
-      <div className="w-full bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-semibold text-charcoal mb-4">GMAIL</h2>
-        <p className="text-steel-blue mb-6">Status: {isGoogleConnected ? 'Tilkoblet' : 'Ikke tilkoblet'}</p>
-        {isGoogleConnected && userInfo && (
-          <div className="mb-6 p-4 bg-ivory rounded-lg border border-steel-blue border-opacity-20">
-            <p className="text-charcoal text-sm mb-2">Innlogget som:</p>
-            <p className="text-charcoal font-medium">{userInfo.fullName}</p>
-            <p className="text-steel-blue text-sm">{userInfo.email}</p>
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-8">
+        {/* Vis tilkoblede brukere */}
+        {connections.map((conn, idx) => (
+          <div key={conn.provider} className="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-green-400">
+            <CheckCircle className="text-green-500 mb-2" size={32} />
+            <Mail className="text-gray-500 mb-1" size={20} />
+            <span className="font-semibold text-gray-800 mb-1">{conn.email}</span>
+            <span className="text-xs text-green-600 font-medium">Tilkoblet ({conn.provider === 'gmail' ? 'Google' : 'Microsoft'})</span>
           </div>
-        )}
-        {!isGoogleConnected ? (
+        ))}
+        {/* Alltid én boks for 'Koble til ny bruker' hvis det er plass */}
+        {connections.length < 3 && (
           <button
-            onClick={handleGmailConnect}
-            disabled={isConnecting}
-            className="w-full bg-bronze hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-[#181818] hover:bg-[#232323] text-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-dashed border-bronze transition-colors"
+            onClick={() => setModalOpen(true)}
           >
-            {isConnecting ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                <span className="ml-3">Kobler til...</span>
-              </div>
-            ) : (
-              'Koble til Gmail'
-            )}
-          </button>
-        ) : (
-          <button
-            onClick={handleGmailDisconnect}
-            className="w-full bg-muted-red hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-          >
-            Koble fra Gmail
+            <PlusCircle className="text-bronze mb-2" size={32} />
+            <span className="font-semibold">Koble til ny bruker</span>
           </button>
         )}
-      </div>
-      {/* Outlook Box */}
-      <div className="w-full bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-semibold text-charcoal mb-4">OUTLOOK</h2>
-        <p className="text-steel-blue mb-6">Status: {isOutlookConnected ? 'Tilkoblet' : 'Ikke tilkoblet'}</p>
-        {isOutlookConnected && outlookEmail && (
-          <div className="mb-6 p-4 bg-ivory rounded-lg border border-steel-blue border-opacity-20">
-            <p className="text-charcoal text-sm mb-2">Innlogget som:</p>
-            <p className="text-steel-blue text-sm">{outlookEmail}</p>
+        {/* Fyll ut grid med tomme bokser hvis mindre enn 3 */}
+        {Array.from({ length: 3 - (connections.length + 1) }).map((_, idx) => (
+          <div key={"empty-" + idx} className="bg-gray-100 rounded-lg p-6 border-2 border-dashed border-gray-300 flex items-center justify-center opacity-50">
+            <span className="text-gray-400">Tom plass</span>
           </div>
-        )}
-        {!isOutlookConnected ? (
-          <button
-            onClick={handleOutlookConnect}
-            className="w-full bg-bronze hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-          >
-            Koble til Outlook
-          </button>
-        ) : (
-          <button
-            onClick={handleOutlookDisconnect}
-            className="w-full bg-muted-red hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-          >
-            Koble fra Outlook
-          </button>
-        )}
+        ))}
       </div>
-    </div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Koble til ny bruker</h2>
+          <p className="text-gray-600 text-sm mb-4">Velg hvilken type konto du vil koble til:</p>
+          <div className="flex flex-col gap-4">
+            <Button onClick={() => handleConnect('gmail')} className="w-full bg-bronze text-white hover:bg-bronze/90 flex items-center gap-2">
+              <img src="/google.svg" alt="Google" className="h-5 w-5" /> Koble til Google
+            </Button>
+            <Button onClick={() => handleConnect('outlook')} className="w-full bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2">
+              <img src="/microsoft.svg" alt="Microsoft" className="h-5 w-5" /> Koble til Microsoft
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   )
 } 
