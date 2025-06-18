@@ -176,13 +176,9 @@ function UserConnectionsGrid() {
     fetchConnections()
   }, [])
 
-  // Handler for å åpne OAuth
-  const handleConnect = (provider: 'gmail' | 'outlook') => {
-    if (provider === 'gmail') {
-      window.location.href = '/api/auth/gmail/login'
-    } else {
-      window.location.href = '/api/auth/outlook/login'
-    }
+  // Handler for å åpne tilkoblingsside
+  const handleConnectPage = () => {
+    router.push('/dashboard/connect')
   }
 
   // Handler for å koble fra en konto
@@ -199,19 +195,6 @@ function UserConnectionsGrid() {
     } finally {
       setDisconnectingId(null)
     }
-  }
-
-  // Enkel modal-komponent
-  function Modal({ open, onClose, children }: { open: boolean, onClose: () => void, children: React.ReactNode }) {
-    if (!open) return null
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full relative">
-          <button onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-          {children}
-        </div>
-      </div>
-    )
   }
 
   // Grid med 3 kolonner per rad, dynamisk antall rader
@@ -248,7 +231,7 @@ function UserConnectionsGrid() {
                   <button
                     key="add-user"
                     className="bg-[#181818] hover:bg-[#232323] text-white rounded-lg shadow-lg p-6 flex flex-col items-center justify-center border-2 border-dashed border-bronze transition-colors"
-                    onClick={() => setModalOpen(true)}
+                    onClick={handleConnectPage}
                   >
                     <PlusCircle className="text-bronze mb-2" size={32} />
                     <span className="font-semibold">Koble til ny bruker</span>
@@ -258,24 +241,9 @@ function UserConnectionsGrid() {
                 return null
               }
             })}
-            {/* Ikke vis tomme bokser */}
           </div>
         ))}
       </div>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold mb-2">Koble til ny bruker</h2>
-          <p className="text-gray-600 text-sm mb-4">Velg hvilken type konto du vil koble til:</p>
-          <div className="flex flex-col gap-4">
-            <Button onClick={() => handleConnect('gmail')} className="w-full bg-bronze text-white hover:bg-bronze/90 flex items-center gap-2">
-              <img src="/google.svg" alt="Google" className="h-5 w-5" /> Koble til Google
-            </Button>
-            <Button onClick={() => handleConnect('outlook')} className="w-full bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2">
-              <img src="/microsoft.svg" alt="Microsoft" className="h-5 w-5" /> Koble til Microsoft
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </>
   )
 } 
