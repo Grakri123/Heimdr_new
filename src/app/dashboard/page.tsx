@@ -104,6 +104,18 @@ export default function DashboardPage() {
     }
 
     checkConnections()
+
+    // Lytt etter postMessage fra connect-popup
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "heimdr-connected") {
+        // Oppdater grid
+        if (typeof window !== 'undefined') {
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [supabase])
 
   if (loading) {
