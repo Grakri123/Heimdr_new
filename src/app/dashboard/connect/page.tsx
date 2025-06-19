@@ -25,7 +25,6 @@ export default function ConnectPage() {
       <span className="text-white text-lg mb-6">Med</span>
       <div className="flex flex-col items-center w-full gap-8">
         <div className="flex flex-col items-center w-full">
-          <span className="text-white text-lg mb-2">Gmail</span>
           <button
             onClick={() => handleConnect('gmail')}
             className="bg-white rounded-lg shadow-md px-8 py-4 flex items-center justify-center w-full max-w-xs hover:scale-105 transition-transform mb-4"
@@ -35,7 +34,6 @@ export default function ConnectPage() {
         </div>
         <span className="text-white text-lg">Eller</span>
         <div className="flex flex-col items-center w-full">
-          <span className="text-white text-lg mb-2">Outlook</span>
           <button
             onClick={() => handleConnect('outlook')}
             className="bg-white rounded-lg shadow-md px-8 py-4 flex items-center justify-center w-full max-w-xs hover:scale-105 transition-transform"
