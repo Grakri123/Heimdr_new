@@ -43,10 +43,6 @@ export default function EmailList({ emails, onRefresh }: EmailListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-semibold">E-poster</h2>
-      </div>
-
       <div className="space-y-4">
         {emails.map((email) => (
           <div 
