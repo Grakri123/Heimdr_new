@@ -60,3 +60,29 @@ Laget med ❤️ av Informativ Reklame AS
 - Full AI-kopilot for e-post og sikkerhet
 - Admin-panel for sikkerhetsvurderinger
 
+## API: Send e-postvarsel
+
+POST `/api/send-alert`
+
+Sender e-postvarsel om phishing-risiko via Resend.
+
+**Body:**
+```json
+{
+  "email": "bruker@domene.no",
+  "risk": "high" | "medium"
+}
+```
+
+**Respons:**
+- 200 OK: `{ success: true }`
+- 400 Bad Request: `{ error: 'Ugyldig input' }`
+- 500 Server Error: `{ error: 'Kunne ikke sende varsel' }`
+
+**Eksempel med curl:**
+```sh
+curl -X POST https://<ditt-domene>/api/send-alert \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "test@eksempel.no", "risk": "high" }'
+```
+
