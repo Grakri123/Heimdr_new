@@ -90,6 +90,28 @@ async function executeGmailApiCall<T>(apiCall: () => Promise<T>, supabase: any, 
   }
 }
 
+// Robust uthenting av body
+function extractBody(payload: any): string {
+  if (payload?.body?.data) {
+    return Buffer.from(payload.body.data, 'base64').toString();
+  }
+  if (payload?.parts) {
+    const textPart = payload.parts.find((part: any) => part.mimeType === 'text/plain');
+    if (textPart) {
+      return extractBody(textPart);
+    }
+    const htmlPart = payload.parts.find((part: any) => part.mimeType === 'text/html');
+    if (htmlPart) {
+      return extractBody(htmlPart);
+    }
+    for (const part of payload.parts) {
+      const result = extractBody(part);
+      if (result) return result;
+    }
+  }
+  return '';
+}
+
 export async function GET(req: Request) {
   try {
     const supabase = createServerClient()
@@ -183,17 +205,7 @@ export async function GET(req: Request) {
       const date = new Date(parseInt(fullMessage.data.internalDate!)).toISOString()
 
       // Extract email body
-      let body = ''
-      if (fullMessage.data.payload?.parts) {
-        const textPart = fullMessage.data.payload.parts.find(part => 
-          part.mimeType === 'text/plain' || part.mimeType === 'text/html'
-        )
-        if (textPart?.body?.data) {
-          body = Buffer.from(textPart.body.data, 'base64').toString()
-        }
-      } else if (fullMessage.data.payload?.body?.data) {
-        body = Buffer.from(fullMessage.data.payload.body.data, 'base64').toString()
-      }
+      let body = extractBody(fullMessage.data.payload);
 
       // Store in Supabase
       const { data: existingEmail } = await supabase
