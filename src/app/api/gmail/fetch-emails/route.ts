@@ -158,6 +158,14 @@ export async function GET(req: Request) {
     const messages = response.data.messages || []
     const processedEmails = []
 
+    // Get user email from gmail_tokens
+    const { data: tokenEmailData } = await supabase
+      .from('gmail_tokens')
+      .select('email')
+      .eq('user_id', userId)
+      .single()
+    const userEmail = tokenEmailData?.email || null;
+
     for (const message of messages) {
       const fullMessage = await gmail.users.messages.get({
         userId: 'me',
@@ -196,6 +204,7 @@ export async function GET(req: Request) {
           .insert({
             id: message.id,
             user_id: userId,
+            user_email: userEmail,
             message_id: message.id,
             subject,
             from_address: from,

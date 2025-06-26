@@ -114,6 +114,14 @@ export async function GET(req: Request) {
       }
     }
 
+    // Get user email from outlook_tokens
+    const { data: tokenEmailData } = await supabase
+      .from('outlook_tokens')
+      .select('email')
+      .eq('user_id', userId)
+      .single()
+    const userEmail = tokenEmailData?.email || null;
+
     // Fetch emails from Outlook
     const response = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime desc', {
       headers: {
@@ -158,6 +166,7 @@ export async function GET(req: Request) {
           .insert({
             id: message.id,
             user_id: userId,
+            user_email: userEmail,
             message_id: message.id,
             subject: message.subject,
             from_address: message.from.emailAddress.address,

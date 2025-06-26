@@ -11,4 +11,5 @@ export interface Email {
   message_id: string
   analyzed_at: string | null
   created_at: string
+  user_email?: string
 } 
