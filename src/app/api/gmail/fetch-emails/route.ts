@@ -97,6 +97,7 @@ export async function GET(req: Request) {
     // Try to get from header (Edge Function call)
     const userIdHeader = req.headers.get('x-user-id')
     const tokenHeader = req.headers.get('x-provider-token')
+    const userEmailHeader = req.headers.get('x-user-email')
 
     let userId = userIdHeader || null
     let accessToken = tokenHeader || null
@@ -158,13 +159,16 @@ export async function GET(req: Request) {
     const messages = response.data.messages || []
     const processedEmails = []
 
-    // Get user email from gmail_tokens
-    const { data: tokenEmailData } = await supabase
-      .from('gmail_tokens')
-      .select('email')
-      .eq('user_id', userId)
-      .single()
-    const userEmail = tokenEmailData?.email || null;
+    // Get user email from gmail_tokens hvis ikke header
+    let userEmail = userEmailHeader;
+    if (!userEmail) {
+      const { data: tokenEmailData } = await supabase
+        .from('gmail_tokens')
+        .select('email')
+        .eq('user_id', userId)
+        .single()
+      userEmail = tokenEmailData?.email || null;
+    }
 
     for (const message of messages) {
       const fullMessage = await gmail.users.messages.get({

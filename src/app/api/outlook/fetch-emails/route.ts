@@ -66,6 +66,7 @@ export async function GET(req: Request) {
     // Try to get from header (Edge Function call)
     const userIdHeader = req.headers.get('x-user-id')
     const tokenHeader = req.headers.get('x-provider-token')
+    const userEmailHeader = req.headers.get('x-user-email')
 
     let userId = userIdHeader || null
     let accessToken = tokenHeader || null
@@ -114,13 +115,16 @@ export async function GET(req: Request) {
       }
     }
 
-    // Get user email from outlook_tokens
-    const { data: tokenEmailData } = await supabase
-      .from('outlook_tokens')
-      .select('email')
-      .eq('user_id', userId)
-      .single()
-    const userEmail = tokenEmailData?.email || null;
+    // Get user email from outlook_tokens hvis ikke header
+    let userEmail = userEmailHeader;
+    if (!userEmail) {
+      const { data: tokenEmailData } = await supabase
+        .from('outlook_tokens')
+        .select('email')
+        .eq('user_id', userId)
+        .single()
+      userEmail = tokenEmailData?.email || null;
+    }
 
     // Fetch emails from Outlook
     const response = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=10&$orderby=receivedDateTime desc', {

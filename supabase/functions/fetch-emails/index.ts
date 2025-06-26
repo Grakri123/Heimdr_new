@@ -48,57 +48,61 @@ serve(async (req) => {
       // Process each user in the current batch
       for (const user of users) {
         try {
-          // Fetch Gmail emails
-          const gmailTokens = await supabase
-            .from('gmail_tokens')
-            .select('access_token, refresh_token')
-            .eq('user_id', user.id)
-            .single()
-
-          if (gmailTokens.data) {
-            const gmailResponse = await fetch(`${APP_URL}/api/gmail/fetch-emails`, {
-              headers: {
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                'X-User-Id': user.id,
-                'X-Provider-Token': gmailTokens.data.access_token,
-                'X-Client-Info': 'service_role',
-              },
-            })
-            if (!gmailResponse.ok) {
-              const errorText = await gmailResponse.text()
-              console.error('Gmail Error Response:', errorText)
-              errors.push({
-                user_id: user.id,
-                service: 'gmail',
-                error: errorText,
-              })
+          // === Gmail: Hent ALLE tokens for brukeren ===
+          const { data: gmailTokens, error: gmailError } = await supabase.from('gmail_tokens').select('access_token, refresh_token, email').eq('user_id', user.id);
+          if (gmailError) {
+            console.error('Gmail tokens fetch error:', gmailError);
+          } else if (Array.isArray(gmailTokens)) {
+            for (const token of gmailTokens){
+              if (token.access_token) {
+                const gmailResponse = await fetch(`${APP_URL}/api/gmail/fetch-emails`, {
+                  headers: {
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                    'X-User-Id': user.id,
+                    'X-Provider-Token': token.access_token,
+                    'X-User-Email': token.email || '',
+                    'X-Client-Info': 'service_role'
+                  }
+                });
+                if (!gmailResponse.ok) {
+                  const errorText = await gmailResponse.text()
+                  console.error('Gmail Error Response:', errorText)
+                  errors.push({
+                    user_id: user.id,
+                    service: 'gmail',
+                    error: errorText,
+                  })
+                }
+              }
             }
           }
 
-          // Fetch Outlook emails
-          const outlookTokens = await supabase
-            .from('outlook_tokens')
-            .select('access_token')
-            .eq('user_id', user.id)
-            .single()
-
-          if (outlookTokens.data) {
-            const outlookResponse = await fetch(`${APP_URL}/api/outlook/fetch-emails`, {
-              headers: {
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                'X-User-Id': user.id,
-                'X-Provider-Token': outlookTokens.data.access_token,
-                'X-Client-Info': 'service_role',
-              },
-            })
-            if (!outlookResponse.ok) {
-              const errorText = await outlookResponse.text()
-              console.error('Outlook Error Response:', errorText)
-              errors.push({
-                user_id: user.id,
-                service: 'outlook',
-                error: errorText,
-              })
+          // === Outlook: Hent ALLE tokens for brukeren ===
+          const { data: outlookTokens, error: outlookError } = await supabase.from('outlook_tokens').select('access_token, email').eq('user_id', user.id);
+          if (outlookError) {
+            console.error('Outlook tokens fetch error:', outlookError);
+          } else if (Array.isArray(outlookTokens)) {
+            for (const token of outlookTokens){
+              if (token.access_token) {
+                const outlookResponse = await fetch(`${APP_URL}/api/outlook/fetch-emails`, {
+                  headers: {
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                    'X-User-Id': user.id,
+                    'X-Provider-Token': token.access_token,
+                    'X-User-Email': token.email || '',
+                    'X-Client-Info': 'service_role'
+                  }
+                });
+                if (!outlookResponse.ok) {
+                  const errorText = await outlookResponse.text()
+                  console.error('Outlook Error Response:', errorText)
+                  errors.push({
+                    user_id: user.id,
+                    service: 'outlook',
+                    error: errorText,
+                  })
+                }
+              }
             }
           }
 
