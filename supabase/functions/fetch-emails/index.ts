@@ -2,7 +2,7 @@ import { serve } from 'std/http/server'
 import { createClient } from '@supabase/supabase-js'
 
 const BATCH_SIZE = 100
-const APP_URL = Deno.env.get('APP_URL') || 'https://www.heimdr.no'
+const APP_URL = Deno.env.get('APP_URL') || 'https://dashbord.heimdr.no'
 
 serve(async (req) => {
   // Only allow scheduled CRON invocations

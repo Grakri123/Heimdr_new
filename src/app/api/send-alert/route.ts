@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const { subject, html } = phishingAlertEmail(email, risk);
 
-    const from = 'alerts@heimdr.no';
+    const from = 'varsel@heimdr.no';
     const to = email;
 
     const result = await resend.emails.send({

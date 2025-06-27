@@ -10,7 +10,7 @@ interface AIResponse {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!
-const APP_URL = Deno.env.get('APP_URL') || 'https://heimdr.no'
+const APP_URL = Deno.env.get('APP_URL') || 'https://dashbord.heimdr.no'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
@@ -70,15 +70,27 @@ async function analyzeEmailWithGPT4(content: string): Promise<AIResponse> {
   const analysis = await openaiRes.json()
   
   try {
-    const aiResponse = JSON.parse(analysis.choices[0].message.content) as AIResponse
+    let replyContent = analysis.choices[0].message.content
+    let replyContentClean = replyContent
+      .replace(/^```json\s*/i, '') // fjerner ```json i starten
+      .replace(/^```\s*/i, '')     // fjerner ``` i starten hvis ikke json
+      .replace(/```$/i, '')        // fjerner ``` på slutten
+      .trim();
+    let reply;
+    try {
+      reply = JSON.parse(replyContentClean);
+    } catch (e) {
+      console.error(`❌ Kunne ikke parse OpenAI-respons for ${email.id}. Original content:`, replyContent, 'Renset content:', replyContentClean);
+      continue;
+    }
     
     // Validate response format
-    if (!aiResponse.riskLevel || !aiResponse.reason || 
-        !['Lav', 'Medium', 'Høy'].includes(aiResponse.riskLevel)) {
+    if (!reply.riskLevel || !reply.reason || 
+        !['Lav', 'Medium', 'Høy'].includes(reply.riskLevel)) {
       throw new Error('Invalid AI response format')
     }
     
-    return aiResponse
+    return reply
   } catch (error) {
     console.error('Failed to parse AI response:', analysis.choices[0].message.content)
     throw new Error('Failed to parse AI response')
@@ -134,6 +146,35 @@ serve(async (req) => {
             const content = `From: ${email.from_address}\nSubject: ${email.subject}\n\n${email.body}`
             const aiResponse = await analyzeEmailWithGPT4(content)
 
+            const isSelfSent = email.from_address === user.email
+            const isFromAlerts = email.from_address === 'varsel@heimdr.no'
+
+            if (isSelfSent || isFromAlerts) {
+              console.log(`⏭️ Marker som INGEN risiko: E-post ${email.id} sendt fra bruker selv eller fra varsel@heimdr.no.`);
+              let updateResult = await supabase.from('emails').update({
+                ai_risk_level: 'INGEN',
+                ai_reason: isFromAlerts ? 'Systemepost fra varsel@heimdr.no' : 'E-post sendt fra brukerens egen adresse',
+                analyzed_at: new Date().toISOString()
+              }).eq('id', email.id).select();
+              if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
+                console.error(`❌ Første oppdatering til INGEN risiko feilet for ${email.id}:`, updateResult.error);
+                // Prøv en ekstra gang med streng sammenligning på id som tekst
+                updateResult = await supabase.from('emails').update({
+                  ai_risk_level: 'INGEN',
+                  ai_reason: isFromAlerts ? 'Systemepost fra varsel@heimdr.no' : 'E-post sendt fra brukerens egen adresse',
+                  analyzed_at: new Date().toISOString()
+                }).eq('id', String(email.id)).select();
+                if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
+                  console.error(`❌ Andre oppdatering til INGEN risiko feilet for ${email.id}:`, updateResult.error);
+                } else {
+                  console.log(`✅ Andre forsøk: E-post ${email.id} satt til INGEN risiko.`);
+                }
+              } else {
+                console.log(`✅ E-post ${email.id} satt til INGEN risiko.`);
+              }
+              continue;
+            }
+            
             const { error: updateError } = await supabase
               .from('emails')
               .update({
