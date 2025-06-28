@@ -1,0 +1,12 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://www.dashbord.heimdr.no/$1",
+      "has": [
+        { "type": "host", "value": "dashbord.heimdr.no" }
+      ],
+      "permanent": true
+    }
+  ]
+} 
